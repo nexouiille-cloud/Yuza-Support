@@ -4,7 +4,9 @@ let current = null;
 const tickets = new Map(); // userId -> ticket
 const msgCache = new Map(); // userId -> [messages]
 
-let filterMode = 'open';        // 'open' | 'closed' | 'all'
+let filterMode = 'open';        // 'open' | 'closed' | 'all' | 'towait' | 'unassigned'
+let advAssignee = '';
+let advPriority = '';
 let searchQuery = '';
 let searchIds = null;
 let categories = [];
@@ -655,6 +657,18 @@ document.querySelectorAll('#filters button').forEach((b) => {
     renderSidebar();
   });
 });
+$('#advToggle').addEventListener('click', () => {
+  const hidden = $('#advFilters').classList.toggle('hidden');
+  $('#advToggle').textContent = hidden ? '＋ filtres avancés' : '－ filtres avancés';
+});
+$('#advAssignee').addEventListener('change', (e) => {
+  advAssignee = e.target.value;
+  renderSidebar();
+});
+$('#advPriority').addEventListener('change', (e) => {
+  advPriority = e.target.value;
+  renderSidebar();
+});
 
 /* ---------------- vue ticket ---------------- */
 function closeTicketView() {
@@ -718,6 +732,12 @@ function renderSidebar() {
     list = list.filter((t) => t.status !== 'closed' && !t.assignee_id);
   else if (filterMode === 'towait')
     list = list.filter((t) => t.status !== 'closed' && t.waiting === 'staff');
+  if (advAssignee === 'me') list = list.filter((t) => t.assignee_id === myId);
+  else if (advAssignee === 'none') list = list.filter((t) => !t.assignee_id);
+  if (advPriority === 'high')
+    list = list.filter((t) => t.priority === 'high' || t.priority === 'urgent');
+  else if (advPriority === 'urgent')
+    list = list.filter((t) => t.priority === 'urgent');
   if (searchIds) list = list.filter((t) => searchIds.has(t.user_id));
 
   const box = $('#ticketList');
@@ -959,6 +979,16 @@ function fillSettings(s, canEdit) {
   $('#setBg').value = th.bg || '#0a0a0c';
   renderSetRoles(s.assignRoles || assignRoles || []);
   $('#setSla').value = s.slaMinutes || slaMin;
+  $('#setAsk').checked = s.askCategory !== false;
+  const ac = s.autoClose || {};
+  $('#setAcOn').checked = !!ac.enabled;
+  $('#setAcWarn').value = ac.warnHours || 48;
+  $('#setAcClose').value = ac.closeHours || 72;
+  const fl = s.flood || {};
+  $('#setFlOn').checked = fl.enabled !== false;
+  $('#setFlCount').value = fl.count || 8;
+  $('#setFlWin').value = fl.windowSec || 15;
+  $('#setFlMute').value = fl.muteMin || 10;
 }
 
 function roleRow(name, rid) {
@@ -1013,6 +1043,18 @@ $('#setSave').addEventListener('click', () => {
         staffPingRoleId: $('#setPing').value.trim(),
         assignRoles: gatherSetRoles(),
         slaMinutes: Number($('#setSla').value) || 15,
+        askCategory: $('#setAsk').checked,
+        autoClose: {
+          enabled: $('#setAcOn').checked,
+          warnHours: Number($('#setAcWarn').value) || 48,
+          closeHours: Number($('#setAcClose').value) || 72,
+        },
+        flood: {
+          enabled: $('#setFlOn').checked,
+          count: Number($('#setFlCount').value) || 8,
+          windowSec: Number($('#setFlWin').value) || 15,
+          muteMin: Number($('#setFlMute').value) || 10,
+        },
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
           accent: $('#setAccent').value,

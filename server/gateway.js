@@ -28,6 +28,11 @@ import {
   effectiveTheme,
   effectiveAssignRoles,
   effectiveSla,
+  effectiveAskCategory,
+  effectiveAutoClose,
+  effectiveFlood,
+  markAutoWarned,
+  staleTickets,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -99,6 +104,11 @@ function canSee(entry, userId) {
 // Message système (ex : réponse automatique d'accueil).
 export function handleSystemMessage(stored) {
   broadcastTicket(stored.user_id, { type: 'message', message: stored });
+}
+
+// Un ticket a changé côté bot (ex : catégorie choisie par le client).
+export function handleTicketUpdate() {
+  pushTickets();
 }
 
 // Message staff venu d'ailleurs que le WebSocket (ex : pièce jointe via HTTP).
@@ -278,6 +288,22 @@ export function registerGateway(app) {
         if (p.slaMinutes != null) {
           const n = Number(p.slaMinutes);
           if (Number.isFinite(n) && n > 0) patch.slaMinutes = Math.round(n);
+        }
+        if (typeof p.askCategory === 'boolean') patch.askCategory = p.askCategory;
+        if (p.autoClose && typeof p.autoClose === 'object') {
+          patch.autoClose = {
+            enabled: !!p.autoClose.enabled,
+            warnHours: Math.max(1, Number(p.autoClose.warnHours) || 48),
+            closeHours: Math.max(1, Number(p.autoClose.closeHours) || 72),
+          };
+        }
+        if (p.flood && typeof p.flood === 'object') {
+          patch.flood = {
+            enabled: p.flood.enabled !== false,
+            count: Math.max(2, Number(p.flood.count) || 8),
+            windowSec: Math.max(3, Number(p.flood.windowSec) || 15),
+            muteMin: Math.max(1, Number(p.flood.muteMin) || 10),
+          };
         }
         if (p.theme && typeof p.theme === 'object') {
           patch.theme = {
@@ -640,4 +666,46 @@ export function registerGateway(app) {
     },
     Math.max(30, config.roleRecheckSeconds) * 1000,
   ).unref?.();
+
+  // Fermeture automatique des tickets inactifs (toutes les 15 min).
+  setInterval(async () => {
+    const ac = effectiveAutoClose();
+    if (!ac.enabled) return;
+    for (const t of staleTickets(ac.warnHours)) {
+      if (t.auto_warned) continue;
+      markAutoWarned(t.user_id);
+      try {
+        await sendDM(
+          t.user_id,
+          "Toujours besoin d'aide ? Sans réponse de ta part, ce ticket sera fermé automatiquement bientôt.",
+        );
+      } catch {}
+      const sys = addMessage(
+        t.user_id,
+        'system',
+        'Système',
+        'Relance automatique envoyée (inactivité client).',
+      );
+      broadcastTicket(t.user_id, { type: 'message', message: sys });
+    }
+    let closedAny = false;
+    for (const t of staleTickets(ac.closeHours)) {
+      setTicketStatus(t.user_id, 'closed');
+      try {
+        await sendDM(
+          t.user_id,
+          'Ce ticket a été fermé automatiquement faute de réponse. Écris-nous à nouveau si besoin.',
+        );
+      } catch {}
+      const sys = addMessage(
+        t.user_id,
+        'system',
+        'Système',
+        'Ticket fermé automatiquement (inactivité).',
+      );
+      broadcastTicket(t.user_id, { type: 'message', message: sys });
+      closedAny = true;
+    }
+    if (closedAny) pushTickets();
+  }, 15 * 60000).unref?.();
 }

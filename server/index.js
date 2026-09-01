@@ -11,6 +11,7 @@ import {
   startBot,
   setClientMessageHandler,
   setSystemMessageHandler,
+  setTicketUpdateHandler,
   getStaffMember,
   sendDMFile,
 } from './bot.js';
@@ -19,6 +20,7 @@ import {
   registerGateway,
   handleClientMessage,
   handleSystemMessage,
+  handleTicketUpdate,
   relayStaffMessage,
 } from './gateway.js';
 import {
@@ -247,6 +249,7 @@ app.post('/api/attach', async (req, reply) => {
 registerGateway(app);
 setClientMessageHandler(handleClientMessage);
 setSystemMessageHandler(handleSystemMessage);
+setTicketUpdateHandler(handleTicketUpdate);
 
 await startBot();
 await app.listen({ port: config.port, host: config.host });

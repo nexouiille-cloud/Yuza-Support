@@ -101,6 +101,19 @@
               <button data-f="closed">Clôturés</button>
               <button data-f="all">Tous</button>
             </div>
+            <button id="advToggle" class="linkbtn" type="button">＋ filtres avancés</button>
+            <div id="advFilters" class="hidden">
+              <select id="advAssignee">
+                <option value="">Assigné : tous</option>
+                <option value="me">À moi</option>
+                <option value="none">Non assignés</option>
+              </select>
+              <select id="advPriority">
+                <option value="">Priorité : toutes</option>
+                <option value="high">Haute et +</option>
+                <option value="urgent">Urgente</option>
+              </select>
+            </div>
           </div>
           <div id="ticketList"><div class="empty">Aucun ticket pour l'instant.</div></div>
         </div>
@@ -193,6 +206,21 @@
             <h4>Minuteur SLA</h4>
             <label class="setline">Alerte si un client attend depuis plus de
               <input type="number" id="setSla" min="1" max="1440" style="width:80px;flex:0" /> minutes</label>
+          </div>
+          <div class="setgrp">
+            <h4>Menu catégorie au 1er message</h4>
+            <label class="setline"><input type="checkbox" id="setAsk" /> Envoyer des boutons de catégorie au client dès l'ouverture du ticket</label>
+          </div>
+          <div class="setgrp">
+            <h4>Fermeture automatique des tickets inactifs</h4>
+            <label class="setline"><input type="checkbox" id="setAcOn" /> Activer</label>
+            <label class="setline">Relancer le client après <input type="number" id="setAcWarn" min="1" style="width:70px;flex:0" /> h sans réponse</label>
+            <label class="setline">Fermer après <input type="number" id="setAcClose" min="1" style="width:70px;flex:0" /> h sans réponse</label>
+          </div>
+          <div class="setgrp">
+            <h4>Anti-flood (spam de MP)</h4>
+            <label class="setline"><input type="checkbox" id="setFlOn" /> Activer</label>
+            <label class="setline">Seuil : <input type="number" id="setFlCount" min="2" style="width:60px;flex:0" /> messages en <input type="number" id="setFlWin" min="3" style="width:60px;flex:0" /> s → mise en pause <input type="number" id="setFlMute" min="1" style="width:60px;flex:0" /> min</label>
           </div>
           <div class="setgrp">
             <h4>Rôles staff & niveaux</h4>

@@ -3,6 +3,9 @@ import {
   GatewayIntentBits,
   Partials,
   Events,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
 } from 'discord.js';
 import { config } from './config.js';
 import {
@@ -12,6 +15,11 @@ import {
   effectiveWelcome,
   effectiveStaffChannel,
   effectiveStaffPingRole,
+  effectiveCategories,
+  effectiveAskCategory,
+  effectiveFlood,
+  setTicketCategory,
+  getTicket,
 } from './db.js';
 import { saveFromUrl } from './uploads.js';
 
@@ -34,6 +42,30 @@ export function setClientMessageHandler(fn) {
 let onSystemMessage = () => {};
 export function setSystemMessageHandler(fn) {
   onSystemMessage = fn;
+}
+
+let onTicketUpdate = () => {};
+export function setTicketUpdateHandler(fn) {
+  onTicketUpdate = fn;
+}
+
+/* ---------------- anti-flood ---------------- */
+const floodLog = new Map(); // userId -> [timestamps]
+const mutedUntil = new Map(); // userId -> timestamp
+function checkFlood(userId) {
+  const cfg = effectiveFlood();
+  if (!cfg.enabled) return false;
+  const now = Date.now();
+  if ((mutedUntil.get(userId) || 0) > now) return true;
+  const arr = (floodLog.get(userId) || []).filter((t) => now - t < cfg.windowSec * 1000);
+  arr.push(now);
+  floodLog.set(userId, arr);
+  if (arr.length > cfg.count) {
+    mutedUntil.set(userId, now + cfg.muteMin * 60000);
+    floodLog.delete(userId);
+    return true;
+  }
+  return false;
 }
 
 bot.once(Events.ClientReady, async (c) => {
@@ -64,6 +96,21 @@ bot.on(Events.MessageCreate, async (msg) => {
       return;
     }
 
+    if (checkFlood(userId)) {
+      const mins = Math.ceil(((mutedUntil.get(userId) || 0) - Date.now()) / 60000);
+      const already = getTicket(userId)?.muted_notice;
+      if (!already) {
+        try {
+          await sendDM(userId, `⏳ Tu envoies trop de messages. Merci de patienter ${mins} min, un membre du staff te répondra.`);
+        } catch {}
+        const t = getTicket(userId);
+        if (t) t.muted_notice = true;
+      }
+      console.log(`[bot] MP ignoré (flood) : ${msg.author.tag}`);
+      return;
+    }
+    { const t = getTicket(userId); if (t) t.muted_notice = false; }
+
     let text = (msg.content || '').trim();
     const atts = [];
     for (const a of msg.attachments.values()) {
@@ -84,10 +131,62 @@ bot.on(Events.MessageCreate, async (msg) => {
     onClientMessage(stored, res);
     if (res.created || res.reopened) {
       announceNewTicket(username, preview, res);
+      if (res.created) await askCategory(userId);
       sendWelcome(userId, username);
     }
   } catch (err) {
     console.error('[bot] erreur MessageCreate:', err);
+  }
+});
+
+// Boutons de catégorie envoyés au client au 1er MP.
+async function askCategory(userId) {
+  if (!effectiveAskCategory()) return;
+  const cats = effectiveCategories().slice(0, 25);
+  if (!cats.length) return;
+  try {
+    const rows = [];
+    for (let i = 0; i < cats.length; i += 5) {
+      rows.push(
+        new ActionRowBuilder().addComponents(
+          cats.slice(i, i + 5).map((c) =>
+            new ButtonBuilder()
+              .setCustomId('cat:' + c.slice(0, 90))
+              .setLabel(c.slice(0, 80))
+              .setStyle(ButtonStyle.Secondary),
+          ),
+        ),
+      );
+    }
+    await sendDM(userId, {
+      content: '👉 Choisis la catégorie qui correspond à ta demande :',
+      components: rows,
+    });
+  } catch (err) {
+    console.error('[bot] menu catégorie échoué :', err?.message || err);
+  }
+}
+
+// Clic sur un bouton de catégorie.
+bot.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    if (!interaction.isButton() || !interaction.customId.startsWith('cat:')) return;
+    const cat = interaction.customId.slice(4);
+    const uid = interaction.user.id;
+    if (!getTicket(uid) || !effectiveCategories().includes(cat)) {
+      await interaction.reply({ content: 'Catégorie indisponible.', ephemeral: true });
+      return;
+    }
+    setTicketCategory(uid, cat);
+    const sys = addMessage(uid, 'system', 'Système', `Catégorie choisie par le client : ${cat}`);
+    onSystemMessage(sys);
+    onTicketUpdate(uid);
+    await interaction.update({
+      content: `✅ Catégorie : **${cat}**. Un membre du staff va te répondre.`,
+      components: [],
+    });
+  } catch (err) {
+    console.error('[bot] interaction catégorie échouée :', err?.message || err);
   }
 });
 

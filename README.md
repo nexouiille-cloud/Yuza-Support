@@ -56,6 +56,10 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Réglages** | onglet ⚙️ (niveau le plus élevé) : catégories, message d'accueil, salon d'annonce, **rôles demandables** (nom + ID), **seuil SLA**, **Apparence** (nom, accent + fond, aperçu live). Stocké dans `data.json`, surcharge `.env` / `*.json`. |
 | **Demande de rôle** | dans un ticket, menu 🙋 « Demander… » → choisis un rôle (configuré dans Réglages). Les staff qui ont ce rôle Discord reçoivent : une **grosse bannière** sur le ticket, une notif, un ping dans le salon d'annonce, et une alerte sur l'accueil. Satisfait dès qu'un membre du rôle prend/répond. |
 | **Statut d'attente** | chaque ticket affiche s'il attend le **staff** (⏱ minuteur SLA, rouge au-delà du seuil) ou le **client** ; filtre « À traiter ». |
+| **Menu catégorie** | au 1er MP, le bot envoie au client des **boutons Discord** (une par catégorie) → le ticket arrive déjà trié. Activable dans Réglages. |
+| **Fermeture auto** | tickets ouverts en attente client : relance auto après X h, fermeture après Y h. Réglages (désactivé par défaut). |
+| **Anti-flood** | trop de MP en peu de temps → le client est mis en pause N min (message auto). Réglages (activé par défaut). |
+| **Filtres avancés** | sous la recherche : par assigné (à moi / non assignés) et priorité. |
 
 **Non modifiables depuis le site** (dans les variables d'hébergement) : `BOT_TOKEN`,
 `STAFF_ROLE_IDS`, `STAFF_TIERS`, `GUILD_ID`, `OAUTH_REDIRECT_URI`.

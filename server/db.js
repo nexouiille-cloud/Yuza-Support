@@ -70,6 +70,7 @@ export function upsertTicket(userId, username, preview) {
       last_client_at: now,
       last_staff_at: null,
       requested_role: null,
+      auto_warned: false,
       created_at: now,
       updated_at: now,
       last_preview: preview ?? '',
@@ -150,8 +151,14 @@ export function addMessage(userId, author, authorName, content, attachments = []
   // suivi de l'attente (client / staff)
   const t = data.tickets[userId];
   if (t) {
-    if (author === 'client') { t.last_client_at = now; t.waiting = 'staff'; }
-    else if (author === 'staff') { t.last_staff_at = now; t.waiting = 'client'; }
+    if (author === 'client') {
+      t.last_client_at = now;
+      t.waiting = 'staff';
+      t.auto_warned = false;
+    } else if (author === 'staff') {
+      t.last_staff_at = now;
+      t.waiting = 'client';
+    }
   }
   save();
   return msg;
@@ -174,6 +181,11 @@ export function getSettings() {
     staffChannelId: data.settings.staffChannelId ?? null,
     staffPingRoleId: data.settings.staffPingRoleId ?? null,
     theme: data.settings.theme || null,
+    assignRoles: data.settings.assignRoles || null,
+    slaMinutes: data.settings.slaMinutes ?? null,
+    askCategory: data.settings.askCategory !== false,
+    autoClose: effectiveAutoClose(),
+    flood: effectiveFlood(),
   };
 }
 export function updateSettings(patch) {
@@ -220,6 +232,38 @@ export function effectiveAssignRoles() {
 export function effectiveSla() {
   const n = Number(data.settings.slaMinutes);
   return Number.isFinite(n) && n > 0 ? n : 15;
+}
+export function effectiveAskCategory() {
+  return data.settings.askCategory !== false; // défaut : oui
+}
+export function effectiveAutoClose() {
+  const a = data.settings.autoClose || {};
+  return {
+    enabled: !!a.enabled,
+    warnHours: Number(a.warnHours) > 0 ? Number(a.warnHours) : 48,
+    closeHours: Number(a.closeHours) > 0 ? Number(a.closeHours) : 72,
+  };
+}
+export function effectiveFlood() {
+  const f = data.settings.flood || {};
+  return {
+    enabled: f.enabled !== false, // défaut : oui
+    count: Number(f.count) > 0 ? Number(f.count) : 8,
+    windowSec: Number(f.windowSec) > 0 ? Number(f.windowSec) : 15,
+    muteMin: Number(f.muteMin) > 0 ? Number(f.muteMin) : 10,
+  };
+}
+
+export function markAutoWarned(userId) {
+  const t = data.tickets[userId];
+  if (t) { t.auto_warned = true; save(); }
+}
+// tickets ouverts en attente client, dernière réponse staff plus vieille que `hours`
+export function staleTickets(hours) {
+  const cut = Date.now() - hours * 3600000;
+  return Object.values(data.tickets).filter(
+    (t) => t.status !== 'closed' && t.waiting === 'client' && (t.last_staff_at || 0) < cut,
+  );
 }
 
 /* ---------------- fiche membre ---------------- */
