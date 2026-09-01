@@ -9,6 +9,9 @@
     "start": "node server/index.js",
     "launcher": "electron launcher/main.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
     "@fastify/multipart": "^10.1.1",

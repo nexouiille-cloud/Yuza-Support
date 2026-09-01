@@ -7,7 +7,8 @@ import { config } from './config.js';
 import { listPushSubs, removePushSub } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const KEYFILE = join(__dirname, 'vapid.json');
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const KEYFILE = join(DATA_DIR, 'vapid.json');
 
 let keys = null;
 

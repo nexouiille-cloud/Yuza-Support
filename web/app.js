@@ -12,6 +12,8 @@ const collapsedGroups = new Set();
 const NONE = '__none__';
 
 let myId = null;
+let myName = '';
+let myLevelLabel = '';
 let myLevel = 1;
 let tiers = [];
 let maxLvl = 1;
@@ -21,37 +23,122 @@ let vapidPublic = '';
 const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
 
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
 
 function setStatus(s) { $('#statusText').textContent = s; }
+function setConn(state) {
+  const d = $('#connDot');
+  d.className = 'dot' + (state === 'ok' ? ' ok' : state === 'bad' ? ' bad' : '');
+}
 
 function updateTitle() {
   let n = 0;
   for (const t of tickets.values()) n += t.unread || 0;
-  document.title = (n ? `(${n}) ` : '') + 'Yuza Support';
+  document.title = (n ? `(${n}) ` : '') + 'Volt Support';
+}
+
+/* ---------------- navigation entre vues ---------------- */
+const SVG_LOGO =
+  "<svg class='brand' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'>" +
+  "<defs><linearGradient id='vg' x1='0' y1='0' x2='1' y2='1'>" +
+  "<stop offset='0' stop-color='#ffbb3d'/><stop offset='1' stop-color='#c96f00'/></linearGradient></defs>" +
+  "<rect x='6' y='6' width='88' height='88' rx='22' fill='#141317' stroke='url(#vg)' stroke-width='2.5'/>" +
+  "<text x='50' y='64' text-anchor='middle' font-family=\"'Chakra Petch',sans-serif\" " +
+  "font-weight='700' font-size='40' fill='#f3f1ee'>VH</text>" +
+  "<path d='M56 12 L33 53 L46 53 L41 88 L69 43 L54 43 Z' fill='url(#vg)' " +
+  "stroke='#1a1206' stroke-width='1.5' stroke-linejoin='round'/></svg>";
+
+// si /logo.png n'existe pas -> logo SVG intégré
+$$('img.brand').forEach((img) => {
+  const swap = () => {
+    if (!img.parentNode) return;
+    const span = document.createElement('span');
+    span.innerHTML = SVG_LOGO;
+    const svg = span.firstChild;
+    svg.setAttribute('class', 'brand ' + img.className.replace('brand', '').trim());
+    img.replaceWith(svg);
+  };
+  img.addEventListener('error', swap);
+  if (img.complete && img.naturalWidth === 0) swap();
+});
+
+function showView(name) {
+  const id = 'view' + name.charAt(0).toUpperCase() + name.slice(1);
+  $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
+  $$('#rail .navbtn[data-view]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.view === name),
+  );
+  if (name === 'home') renderHome();
+  if (name === 'stats' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'stats' }));
+}
+
+$$('#rail .navbtn[data-view]').forEach((b) =>
+  b.addEventListener('click', () => showView(b.dataset.view)),
+);
+
+$$('.card[data-go]').forEach((c) =>
+  c.addEventListener('click', () => {
+    const go = c.dataset.go;
+    if (go === 'unassigned') {
+      $$('#filters button').forEach((x) =>
+        x.classList.toggle('active', x.dataset.f === 'unassigned'),
+      );
+      filterMode = 'unassigned';
+      renderSidebar();
+      showView('tickets');
+    } else {
+      showView(go);
+    }
+  }),
+);
+
+function renderHome() {
+  let open = 0;
+  let unassigned = 0;
+  for (const t of tickets.values()) {
+    if (t.status === 'closed') continue;
+    open++;
+    if (!t.assignee_id) unassigned++;
+  }
+  $('#hiName').textContent = myName || '—';
+  $('#hiLevel').textContent = myLevelLabel || levelName(myLevel);
+  $('#cOpen').textContent = open;
+  $('#cUnassigned').textContent = unassigned;
+  $('#cOpenHint').textContent = unassigned
+    ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
+    : 'tout est pris en charge';
 }
 
 /* ---------------- notifications ---------------- */
 function setupNotifs() {
   const btn = $('#notifBtn');
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'granted') {
-    setupPush();
+  if (typeof Notification === 'undefined') {
+    btn.classList.add('hidden');
     return;
   }
-  if (Notification.permission === 'default') {
-    btn.classList.remove('hidden');
-    btn.onclick = async () => {
+  if (Notification.permission === 'granted') {
+    btn.classList.add('active');
+    setupPush();
+  }
+  btn.onclick = async () => {
+    if (Notification.permission === 'default') {
       try {
         await Notification.requestPermission();
       } catch {}
-      btn.classList.add('hidden');
+    }
+    if (Notification.permission === 'granted') {
+      btn.classList.add('active');
+      setStatus('Notifications activées.');
       setupPush();
-    };
-  }
+    } else {
+      setStatus('Notifications refusées dans le navigateur.');
+    }
+  };
 }
 
 function urlB64ToUint8Array(b64) {
@@ -98,6 +185,7 @@ function maybeNotify(m) {
     const n = new Notification(title, { body });
     n.onclick = () => {
       window.focus();
+      showView('tickets');
       openTicket(m.userId);
     };
   } catch {}
@@ -131,9 +219,9 @@ init();
 function connect() {
   const wsUrl = location.origin.replace(/^http/, 'ws') + '/gateway';
   ws = new WebSocket(wsUrl);
-  ws.onopen = () => setStatus('connecté');
-  ws.onclose = () => setStatus('déconnecté — recharge la page');
-  ws.onerror = () => setStatus('erreur de connexion');
+  ws.onopen = () => { setConn('ok'); setStatus('connecté'); };
+  ws.onclose = () => { setConn('bad'); setStatus('déconnecté — recharge la page'); };
+  ws.onerror = () => { setConn('bad'); setStatus('erreur de connexion'); };
   ws.onmessage = (ev) => handle(JSON.parse(ev.data));
 }
 
@@ -141,7 +229,9 @@ function handle(m) {
   switch (m.type) {
     case 'hello':
       if (m.uid) myId = m.uid;
+      myName = m.name || myName;
       myLevel = m.level || 1;
+      myLevelLabel = m.levelLabel || levelName(myLevel);
       tiers = Array.isArray(m.tiers) ? m.tiers : [];
       maxLvl = m.maxLevel || 1;
       vapidPublic = m.vapidPublic || vapidPublic;
@@ -149,12 +239,13 @@ function handle(m) {
       (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
-      $('#logoutBtn').classList.remove('hidden');
-      $('#statsBtn').classList.remove('hidden');
+      setConn('ok');
       setupNotifs();
-      setStatus(`connecté : ${m.name} · ${m.levelLabel || levelName(myLevel)}`);
+      setStatus(`${m.name} · ${myLevelLabel}`);
       renderSidebar();
-      if (current) syncHeader();
+      renderHome();
+      if (!current) showView('home');
+      else syncHeader();
       break;
 
     case 'blacklist':
@@ -189,6 +280,7 @@ function handle(m) {
         closeTicketView();
       }
       renderSidebar();
+      renderHome();
       if (current) syncHeader();
       break;
 
@@ -211,6 +303,11 @@ function handle(m) {
       }
       tickets.set(m.userId, t);
       renderSidebar();
+      renderHome();
+      if (!m.fromStaff) {
+        const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+        if (row) row.classList.add('flash');
+      }
       break;
     }
 
@@ -298,18 +395,9 @@ function renderStats(s) {
     `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
     `<h4>Par catégorie</h4>${catRows}` +
     `<h4>Réponses par staff</h4>${staffRows}`;
-  $('#statsPanel').classList.remove('hidden');
 }
 
-$('#statsBtn').addEventListener('click', () => {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' }));
-});
-$('#statsClose').addEventListener('click', () =>
-  $('#statsPanel').classList.add('hidden'),
-);
-$('#statsPanel').addEventListener('click', (e) => {
-  if (e.target.id === 'statsPanel') $('#statsPanel').classList.add('hidden');
-});
+$('#statsClose').addEventListener('click', () => showView('home'));
 
 /* ---------------- recherche + filtre ---------------- */
 let searchTimer = null;
@@ -341,7 +429,7 @@ document.querySelectorAll('#filters button').forEach((b) => {
 function closeTicketView() {
   current = null;
   $('#msgs').innerHTML =
-    '<div class="placeholder">Sélectionne un ticket à gauche.</div>';
+    '<div class="m system">Sélectionne un ticket à gauche.</div>';
   $('#input').disabled = true;
   $('#sendBtn').disabled = true;
   syncHeader();
@@ -359,6 +447,7 @@ function ticketRow(t) {
     (t.status === 'closed' ? ' closed' : '') +
     (bl ? ' bl' : '') +
     (t.assignee_id && !mine ? ' assigned-other' : '');
+  el.dataset.uid = t.user_id;
   el.innerHTML =
     `<div class="n"><span>${esc(t.username)}</span>` +
     `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
@@ -376,6 +465,8 @@ function renderSidebar() {
   if (filterMode === 'open') list = list.filter((t) => t.status !== 'closed');
   else if (filterMode === 'closed')
     list = list.filter((t) => t.status === 'closed');
+  else if (filterMode === 'unassigned')
+    list = list.filter((t) => t.status !== 'closed' && !t.assignee_id);
   if (searchIds) list = list.filter((t) => searchIds.has(t.user_id));
 
   const box = $('#ticketList');
@@ -385,9 +476,11 @@ function renderSidebar() {
       ? 'Aucun résultat.'
       : filterMode === 'closed'
         ? 'Aucun ticket clôturé.'
-        : filterMode === 'open'
-          ? 'Aucun ticket ouvert.'
-          : "Aucun ticket pour l'instant.";
+        : filterMode === 'unassigned'
+          ? 'Aucun ticket non assigné.'
+          : filterMode === 'open'
+            ? 'Aucun ticket ouvert.'
+            : "Aucun ticket pour l'instant.";
     box.innerHTML = `<div class="empty">${why}</div>`;
     updateTitle();
     return;
@@ -498,7 +591,7 @@ function openTicket(uid) {
   renderSidebar();
   if (msgCache.has(uid)) renderMessages();
   else {
-    $('#msgs').innerHTML = '<div class="placeholder">Chargement…</div>';
+    $('#msgs').innerHTML = '<div class="m system">Chargement…</div>';
     ws.send(JSON.stringify({ type: 'open', userId: uid }));
   }
 }
@@ -560,7 +653,7 @@ function renderMessages() {
   const box = $('#msgs');
   box.innerHTML = '';
   if (!arr.length) {
-    box.innerHTML = '<div class="placeholder">Aucun message.</div>';
+    box.innerHTML = '<div class="m system">Aucun message.</div>';
     return;
   }
   for (const msg of arr) {

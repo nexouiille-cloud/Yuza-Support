@@ -5,7 +5,8 @@ import { dirname, join, extname } from 'node:path';
 import crypto from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const UPLOAD_DIR = join(__dirname, '..', 'uploads');
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
+export const UPLOAD_DIR = join(DATA_DIR, 'uploads');
 if (!existsSync(UPLOAD_DIR)) mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const EXT_OK = /^\.(png|jpe?g|gif|webp|mp4|webm|mov|pdf|txt|log|json|zip|mp3|ogg|wav)$/i;

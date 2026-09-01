@@ -6,7 +6,9 @@ import { dirname, join } from 'node:path';
 import { config } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FILE = join(__dirname, '..', 'data.json');
+// DATA_DIR permet de placer les données sur un disque persistant (Railway, etc.)
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
+const FILE = join(DATA_DIR, 'data.json');
 
 let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [] };
 if (existsSync(FILE)) {
