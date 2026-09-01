@@ -34,6 +34,47 @@ const esc = (s) =>
   }[c]));
 
 function setStatus(s) { $('#statusText').textContent = s; }
+
+/* ---------------- thème ---------------- */
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16) + amt);
+  const g = Math.min(255, ((n >> 8) & 255) + amt);
+  const b = Math.min(255, (n & 255) + amt);
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+let appName = 'Volt Support';
+function applyTheme(t) {
+  if (!t) return;
+  const r = document.documentElement.style;
+  if (/^#[0-9a-f]{6}$/i.test(t.accent || '')) {
+    r.setProperty('--accent', t.accent);
+    r.setProperty('--accent-bright', lighten(t.accent, 30));
+    r.setProperty('--accent-deep', lighten(t.accent, -40));
+    r.setProperty('--glow', t.accent + '59');
+    r.setProperty('--glow-soft', t.accent + '24');
+  }
+  if (/^#[0-9a-f]{6}$/i.test(t.bg || '')) {
+    r.setProperty('--bg', t.bg);
+    r.setProperty('--bg-2', lighten(t.bg, 4));
+  }
+  if (t.appName) {
+    appName = t.appName;
+    document.title = appName;
+    const parts = appName.split(' ');
+    const last = parts.pop();
+    $('#login h1').innerHTML = parts.length
+      ? `${esc(parts.join(' '))} <span class="accent">${esc(last)}</span>`
+      : `<span class="accent">${esc(last)}</span>`;
+  }
+}
+(async () => {
+  try {
+    const r = await fetch('/api/theme');
+    if (r.ok) applyTheme(await r.json());
+  } catch {}
+})();
+
 function setConn(state) {
   const d = $('#connDot');
   d.className = 'dot' + (state === 'ok' ? ' ok' : state === 'bad' ? ' bad' : '');
@@ -42,7 +83,7 @@ function setConn(state) {
 function updateTitle() {
   let n = 0;
   for (const t of tickets.values()) n += t.unread || 0;
-  document.title = (n ? `(${n}) ` : '') + 'Volt Support';
+  document.title = (n ? `(${n}) ` : '') + appName;
 }
 
 /* ---------------- navigation entre vues ---------------- */
@@ -77,13 +118,37 @@ function showView(name) {
     b.classList.toggle('active', b.dataset.view === name),
   );
   if (name === 'home') renderHome();
+  if (name === 'staff') renderStaffView();
   if (name === 'stats' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'stats' }));
+  if (name === 'settings' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'get_settings' }));
+}
+
+function renderStaffView() {
+  const box = $('#staffList');
+  if (!box) return;
+  $('#staffCount').textContent =
+    presence.length + ' en ligne';
+  if (!presence.length) {
+    box.innerHTML = '<div class="muted">Personne d\'autre n\'est connecté.</div>';
+    return;
+  }
+  box.innerHTML = presence
+    .map(
+      (s) =>
+        `<div class="staff-item"><span class="sdot"></span>` +
+        `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}</span>` +
+        `<span class="srole">${esc(levelName(s.level))}</span></div>`,
+    )
+    .join('');
 }
 
 $$('#rail .navbtn[data-view]').forEach((b) =>
   b.addEventListener('click', () => showView(b.dataset.view)),
 );
+
+$('#presence').addEventListener('click', () => showView('staff'));
 
 $$('.card[data-go]').forEach((c) =>
   c.addEventListener('click', () => {
@@ -130,6 +195,7 @@ function renderPresence() {
   $('#statusPresence').textContent = presence.length
     ? `${presence.length} staff en ligne`
     : '';
+  if ($('#viewStaff').classList.contains('active')) renderStaffView();
 }
 
 /* ---------------- fiche membre ---------------- */
@@ -310,6 +376,27 @@ function handle(m) {
 
     case 'member':
       renderMemberModal(m.profile, m.query);
+      break;
+
+    case 'theme':
+      applyTheme(m.theme);
+      break;
+
+    case 'settings_meta':
+      $('#settingsNav').classList.toggle('hidden', !m.canEditSettings);
+      if (m.theme) applyTheme(m.theme);
+      break;
+
+    case 'settings':
+      fillSettings(m.settings, m.canEdit);
+      break;
+
+    case 'settings_saved':
+      $('#setStatus').textContent = m.ok
+        ? '✓ enregistré'
+        : m.reason === 'forbidden'
+          ? 'réservé au niveau le plus élevé'
+          : 'échec';
       break;
 
     case 'blacklist':
@@ -734,6 +821,62 @@ $('#memberSearch').addEventListener('keydown', (e) => {
 $('#mmClose').addEventListener('click', () => $('#memberModal').classList.add('hidden'));
 $('#memberModal').addEventListener('click', (e) => {
   if (e.target.id === 'memberModal') $('#memberModal').classList.add('hidden');
+});
+
+/* ---------------- réglages ---------------- */
+let settingsCanEdit = false;
+function fillSettings(s, canEdit) {
+  settingsCanEdit = !!canEdit;
+  $('#setBody').classList.toggle('locked', !canEdit);
+  $('#setStatus').textContent = canEdit
+    ? ''
+    : 'lecture seule — réservé au niveau le plus élevé';
+  $('#setCats').value = (s.categories || categories).join('\n');
+  $('#setWelcome').value = s.welcome ? s.welcome.text : '';
+  $('#setWelcomeOn').checked = s.welcome ? s.welcome.enabled !== false : true;
+  $('#setChan').value = s.staffChannelId || '';
+  $('#setPing').value = s.staffPingRoleId || '';
+  const th = s.theme || {};
+  $('#setAppName').value = th.appName || appName;
+  $('#setAccent').value = th.accent || '#ff9d00';
+  $('#setBg').value = th.bg || '#0a0a0c';
+}
+function livePreview() {
+  applyTheme({
+    appName: $('#setAppName').value.trim() || 'Volt Support',
+    accent: $('#setAccent').value,
+    bg: $('#setBg').value,
+  });
+}
+['#setAppName', '#setAccent', '#setBg'].forEach((sel) =>
+  $(sel).addEventListener('input', livePreview),
+);
+$('#setSave').addEventListener('click', () => {
+  if (!settingsCanEdit || !ws || ws.readyState !== 1) return;
+  const cats = $('#setCats').value
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  ws.send(
+    JSON.stringify({
+      type: 'save_settings',
+      patch: {
+        categories: cats,
+        welcome: { text: $('#setWelcome').value, enabled: $('#setWelcomeOn').checked },
+        staffChannelId: $('#setChan').value.trim(),
+        staffPingRoleId: $('#setPing').value.trim(),
+        theme: {
+          appName: $('#setAppName').value.trim() || 'Volt Support',
+          accent: $('#setAccent').value,
+          bg: $('#setBg').value,
+        },
+      },
+    }),
+  );
+  $('#setStatus').textContent = 'enregistrement…';
+});
+$('#setReload').addEventListener('click', () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
 });
 
 $('#staffViewBtn').addEventListener('click', () => {

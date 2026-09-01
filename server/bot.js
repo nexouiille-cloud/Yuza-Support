@@ -5,7 +5,14 @@ import {
   Events,
 } from 'discord.js';
 import { config } from './config.js';
-import { upsertTicket, addMessage, isBlacklisted } from './db.js';
+import {
+  upsertTicket,
+  addMessage,
+  isBlacklisted,
+  effectiveWelcome,
+  effectiveStaffChannel,
+  effectiveStaffPingRole,
+} from './db.js';
 import { saveFromUrl } from './uploads.js';
 
 export const bot = new Client({
@@ -86,8 +93,9 @@ bot.on(Events.MessageCreate, async (msg) => {
 
 // Réponse automatique à l'ouverture / relance d'un ticket.
 async function sendWelcome(userId, username) {
-  if (!config.welcomeMessage) return;
-  const text = config.welcomeMessage.replace(/\{name\}/g, username);
+  const tpl = effectiveWelcome();
+  if (!tpl) return;
+  const text = tpl.replace(/\{name\}/g, username);
   try {
     await sendDM(userId, text);
     const stored = addMessage(userId, 'system', 'Message auto', text);
@@ -99,17 +107,17 @@ async function sendWelcome(userId, username) {
 
 // Annonce dans le salon staff : "X a ouvert un ticket" + ping du rôle.
 async function announceNewTicket(username, preview, res) {
-  if (!config.staffChannelId) return;
+  const channelId = effectiveStaffChannel();
+  if (!channelId) return;
+  const pingRole = effectiveStaffPingRole();
   try {
-    const ch = await bot.channels.fetch(config.staffChannelId);
+    const ch = await bot.channels.fetch(channelId);
     if (!ch || !ch.isTextBased()) return;
-    const ping = config.staffPingRoleId ? `<@&${config.staffPingRoleId}> ` : '';
+    const ping = pingRole ? `<@&${pingRole}> ` : '';
     const verb = res.created ? 'a ouvert un ticket' : 'a relancé un ticket';
     await ch.send({
       content: `${ping}📩 **${username}** ${verb}\n> ${preview || '(pièce jointe)'}`,
-      allowedMentions: {
-        roles: config.staffPingRoleId ? [config.staffPingRoleId] : [],
-      },
+      allowedMentions: { roles: pingRole ? [pingRole] : [] },
     });
   } catch (err) {
     console.error('[bot] annonce ticket échouée :', err?.message || err);

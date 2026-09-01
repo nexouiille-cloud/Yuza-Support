@@ -45,7 +45,9 @@
       <img class="brand logo" src="/logo.png" alt="" />
       <button class="navbtn active" data-view="home"><span>🏠</span><span class="tip">Accueil</span></button>
       <button class="navbtn" data-view="tickets"><span>🎫</span><span class="tip">Tickets</span></button>
+      <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Équipe en ligne</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
+      <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Réglages</span></button>
       <span class="spacer"></span>
       <button class="navbtn" id="notifBtn" title="Activer les notifications"><span>🔔</span><span class="tip">Notifications</span></button>
       <a class="navbtn" id="logoutBtn" href="/auth/logout" title="Se déconnecter"><span>⎋</span><span class="tip">Déconnexion</span></a>
@@ -133,6 +135,55 @@
             <input type="file" id="fileInput" class="hidden" />
             <input id="input" placeholder="Écris ta réponse au client…" autocomplete="off" disabled />
             <button id="sendBtn" class="btn-accent" disabled>Envoyer</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- Équipe en ligne ---- -->
+      <section id="viewStaff" class="view">
+        <div class="stats-head">
+          <h2>👥 Équipe en ligne</h2>
+          <span id="staffCount" class="who"></span>
+        </div>
+        <p class="muted" style="margin:-8px 0 18px">Staff ayant le panel ouvert en ce moment. Onglet fermé = plus listé.</p>
+        <div id="staffList"></div>
+      </section>
+
+      <!-- ---- Réglages ---- -->
+      <section id="viewSettings" class="view">
+        <div class="stats-head"><h2>⚙️ Réglages</h2><span id="setStatus" class="who"></span></div>
+        <div id="setBody">
+          <div class="setgrp">
+            <h4>Catégories de tickets</h4>
+            <p class="muted">Une par ligne. L'ordre est respecté dans la liste des tickets.</p>
+            <textarea id="setCats" rows="8" spellcheck="false"></textarea>
+          </div>
+          <div class="setgrp">
+            <h4>Message d'accueil automatique</h4>
+            <p class="muted"><code>{name}</code> = pseudo du client. Décoche pour désactiver.</p>
+            <label class="setline"><input type="checkbox" id="setWelcomeOn" /> Envoyer un message d'accueil</label>
+            <textarea id="setWelcome" rows="4" spellcheck="false"></textarea>
+          </div>
+          <div class="setgrp">
+            <h4>Annonce Discord des nouveaux tickets</h4>
+            <p class="muted">Laisse vide pour désactiver. IDs Discord (mode développeur).</p>
+            <label class="setline">Salon d'annonce <input type="text" id="setChan" placeholder="ID du salon" /></label>
+            <label class="setline">Rôle à ping <input type="text" id="setPing" placeholder="ID du rôle" /></label>
+          </div>
+          <div class="setgrp">
+            <h4>Apparence</h4>
+            <label class="setline">Nom affiché <input type="text" id="setAppName" maxlength="40" /></label>
+            <label class="setline">Couleur d'accent <input type="color" id="setAccent" /></label>
+            <label class="setline">Couleur de fond <input type="color" id="setBg" /></label>
+            <p class="muted">L'aperçu s'applique tout de suite ; « Enregistrer » le rend permanent pour tout le monde.</p>
+          </div>
+          <div class="setgrp">
+            <h4>Rôles staff & niveaux</h4>
+            <p class="muted">Modifiables dans les variables d'hébergement (<code>STAFF_ROLE_IDS</code>, <code>STAFF_TIERS</code>) — pas ici, pour éviter de te verrouiller dehors.</p>
+          </div>
+          <div class="set-actions">
+            <button id="setSave" class="btn-accent" type="button">Enregistrer</button>
+            <button id="setReload" class="linkbtn" type="button">Annuler les modifs</button>
           </div>
         </div>
       </section>

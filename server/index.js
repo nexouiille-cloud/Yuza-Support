@@ -27,6 +27,7 @@ import {
   addPushSub,
   removePushSub,
   listMessages,
+  effectiveTheme,
 } from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
@@ -63,6 +64,9 @@ const baseCookie = {
 };
 
 app.get('/health', async () => ({ ok: true }));
+
+// thème / nom de l'appli (public, pour l'affichage)
+app.get('/api/theme', async () => effectiveTheme());
 
 // le front interroge ça au chargement pour savoir s'il est connecté
 app.get('/api/me', async (req, reply) => {

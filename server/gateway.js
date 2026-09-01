@@ -21,6 +21,10 @@ import {
   updatePushSubLevel,
   getMemberProfile,
   findTicketId,
+  effectiveCategories,
+  getSettings,
+  updateSettings,
+  effectiveTheme,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -188,7 +192,12 @@ export function registerGateway(app) {
         vapidPublic: vapidPublicKey(),
         staff: presenceList(),
       });
-      send(entry, { type: 'categories', categories: config.categories });
+      send(entry, { type: 'categories', categories: effectiveCategories() });
+      send(entry, {
+        type: 'settings_meta',
+        canEditSettings: level >= maxLevel,
+        theme: effectiveTheme(),
+      });
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
       broadcastPresence();
     });
@@ -214,6 +223,56 @@ export function registerGateway(app) {
           (id) => entry.level >= tLevel(getTicket(id)),
         );
         send(entry, { type: 'search_results', q: msg.q || '', ids });
+        return;
+      }
+
+      /* ---- réglages ---- */
+      if (msg.type === 'get_settings') {
+        send(entry, {
+          type: 'settings',
+          settings: getSettings(),
+          canEdit: entry.level >= maxLevel,
+        });
+        return;
+      }
+      if (msg.type === 'save_settings') {
+        if (entry.level < maxLevel) {
+          send(entry, { type: 'settings_saved', ok: false, reason: 'forbidden' });
+          return;
+        }
+        const p = msg.patch || {};
+        const patch = {};
+        if (Array.isArray(p.categories)) {
+          patch.categories = [
+            ...new Set(p.categories.map((s) => String(s).trim()).filter(Boolean)),
+          ].slice(0, 40);
+        }
+        if (p.welcome && typeof p.welcome.text === 'string') {
+          patch.welcome = {
+            text: p.welcome.text.slice(0, 1500),
+            enabled: p.welcome.enabled !== false,
+          };
+        }
+        if (typeof p.staffChannelId === 'string') {
+          patch.staffChannelId = p.staffChannelId.trim();
+        }
+        if (typeof p.staffPingRoleId === 'string') {
+          patch.staffPingRoleId = p.staffPingRoleId.trim();
+        }
+        if (p.theme && typeof p.theme === 'object') {
+          patch.theme = {
+            appName: String(p.theme.appName || '').slice(0, 40) || 'Volt Support',
+            accent: /^#[0-9a-fA-F]{6}$/.test(p.theme.accent || '')
+              ? p.theme.accent
+              : '#ff9d00',
+            bg: /^#[0-9a-fA-F]{6}$/.test(p.theme.bg || '') ? p.theme.bg : '#0a0a0c',
+          };
+        }
+        updateSettings(patch);
+        send(entry, { type: 'settings_saved', ok: true });
+        broadcastAll({ type: 'categories', categories: effectiveCategories() });
+        broadcastAll({ type: 'theme', theme: effectiveTheme() });
+        pushTickets();
         return;
       }
 
@@ -331,7 +390,7 @@ export function registerGateway(app) {
           return;
         }
         const cat =
-          msg.category && config.categories.includes(msg.category)
+          msg.category && effectiveCategories().includes(msg.category)
             ? msg.category
             : null;
         setTicketCategory(msg.userId, cat);

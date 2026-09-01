@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [] };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {} };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -19,6 +19,7 @@ if (existsSync(FILE)) {
     data.seq ||= 0;
     data.blacklist ||= [];
     data.pushSubs ||= [];
+    data.settings ||= {};
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -143,6 +144,50 @@ export function addMessage(userId, author, authorName, content, attachments = []
   (data.messages[userId] ||= []).push(msg);
   save();
   return msg;
+}
+
+/* ---------------- réglages (surchargent .env / fichiers) ---------------- */
+export function getSettings() {
+  return {
+    categories: data.settings.categories || null,
+    welcome: data.settings.welcome || null,
+    staffChannelId: data.settings.staffChannelId ?? null,
+    staffPingRoleId: data.settings.staffPingRoleId ?? null,
+    theme: data.settings.theme || null,
+  };
+}
+export function updateSettings(patch) {
+  data.settings = { ...data.settings, ...patch };
+  save();
+  return getSettings();
+}
+export function effectiveCategories() {
+  const c = data.settings.categories;
+  return Array.isArray(c) && c.length ? c : config.categories;
+}
+export function effectiveWelcome() {
+  const s = data.settings.welcome;
+  if (s && typeof s.text === 'string') {
+    if (s.enabled === false) return null;
+    return s.text.trim() || null;
+  }
+  return config.welcomeMessage;
+}
+export function effectiveStaffChannel() {
+  const v = data.settings.staffChannelId;
+  return (v == null ? config.staffChannelId : v) || '';
+}
+export function effectiveStaffPingRole() {
+  const v = data.settings.staffPingRoleId;
+  return (v == null ? config.staffPingRoleId : v) || config.staffRoleIds[0] || '';
+}
+export function effectiveTheme() {
+  const t = data.settings.theme || {};
+  return {
+    appName: (t.appName || 'Volt Support').slice(0, 40),
+    accent: /^#[0-9a-fA-F]{6}$/.test(t.accent || '') ? t.accent : '#ff9d00',
+    bg: /^#[0-9a-fA-F]{6}$/.test(t.bg || '') ? t.bg : '#0a0a0c',
+  };
 }
 
 /* ---------------- fiche membre ---------------- */
