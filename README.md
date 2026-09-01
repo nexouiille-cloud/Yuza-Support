@@ -1,127 +1,121 @@
-# Yuza Support
+# Volt Support
 
-Bot Discord relais de tickets + **interface staff web** (aucune installation).
+Bot Discord relais de tickets + interface staff web (thème "Volt", GTA-RP / FiveM).
 
 - Un **client** écrit un MP au bot Discord → ça crée / alimente un ticket.
-- Le **staff** ouvre l'URL du serveur dans son navigateur, se connecte avec
-  Discord. Le backend vérifie qu'il a un **rôle staff** sur le serveur.
-- Le staff répond depuis la page → le bot envoie la réponse dans le MP du
-  client, préfixée `Pseudo (Staff) : ...`.
-- Si le rôle staff est retiré, l'accès est coupé automatiquement
-  (à la connexion + toutes les 5 min).
+- Le **staff** ouvre l'URL du site, se connecte avec Discord (cookie de session,
+  12 h). Le backend vérifie qu'il a un **rôle staff** sur le serveur.
+- Le staff répond depuis le site → le bot envoie la réponse dans le MP du client,
+  préfixée `Pseudo (Staff) : ...`.
+- Rôle staff retiré → accès coupé (à la connexion + toutes les 5 min).
 
 ```
-server/         bot Discord + backend HTTP/WebSocket (le token vit ICI)
-web/            interface staff (servie par le serveur : index.html + app.js)
-launcher/       ancienne app Electron — OPTIONNELLE, garde le web
-data.json       tickets + messages (créé au 1er lancement)
+server/     bot Discord + backend HTTP/WebSocket (le token vit ICI)
+  index.js    point d'entrée : routes OAuth, /api/*, statique, gateway
+  config.js   lecture .env + categories.json + welcome.txt + blacklist.json
+  bot.js      client discord.js : DM clients, envoi DM, message d'accueil, blacklist
+  auth.js     OAuth2 Discord + sessions signées HMAC
+  gateway.js  WebSocket : toute la logique tickets (réponses, notes, escalade…)
+  db.js       stockage JSON (tickets, messages, blacklist, abonnements push)
+  push.js     Web Push (clés VAPID, envoi filtré par niveau)
+  uploads.js  pièces jointes -> dossier uploads/
+web/        interface staff (servie par le serveur)
+  index.html  connexion + rail de nav + vues Accueil / Tickets / Stats
+  app.js      logique client (WebSocket, rendu, vues)
+  style.css   thème "Volt" (variables CSS, animations)
+  sw.js       service worker (notifications push)
+launcher/   ancienne app Electron — ABANDONNÉE, ne pas utiliser
+data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 ```
 
 ---
 
-## 1. Prérequis
+## Fonctionnalités (toutes en place)
 
-- Node.js 20+ (tu as v24)
-- Un serveur Discord où tu es admin
+| Domaine | Détail |
+|---|---|
+| **Tickets** | créés depuis un MP au bot ; liste groupée par catégorie, repliable |
+| **Réponses** | staff → client en MP Discord ; auto-assignation à la 1re réponse |
+| **Notes internes** | case à cocher ; visibles par tout le staff, jamais envoyées au client (= chat interne du ticket) |
+| **Renommer** | bouton ✏️ : donner un titre au ticket (sinon = pseudo client) |
+| **Priorité** | basse / normale / haute / urgente ; pastille colorée ; urgents remontés en haut |
+| **Assignation** | Prendre / Lâcher / Reprendre ; 🔒 dans la liste + en-tête ; trace écrite dans la conversation |
+| **Catégories** | éditables dans `server/categories.json` ; menu par ticket |
+| **Escalade** | si `STAFF_TIERS` défini : menu niveau ; escalader = les staff sous ce niveau **perdent l'accès au contenu** (vérifié serveur) |
+| **Historique** | filtres Ouverts / Non assignés / Clôturés / Tous + recherche (nom, ID, contenu des messages) |
+| **Vue Staff** | bouton 👁 : masque les messages client, ne montre que staff + notes + système |
+| **Pièces jointes** | client → image/fichier visible dans la conversation ; staff → bouton 📎 renvoie un fichier au client |
+| **Blacklist** | bouton 🚫 : le client ne peut plus ouvrir de ticket. Liste de départ : `server/blacklist.json` |
+| **Message d'accueil** | réponse auto à l'ouverture d'un ticket. Texte : `server/welcome.txt` (`{name}` = pseudo ; vide = désactivé) |
+| **Stats** | vue dédiée : total / ouverts / clôturés / non assignés, temps de réponse moyen, graphe 14 j, par catégorie, par staff |
+| **Notifications** | toast navigateur (onglet ouvert) + **Web Push** (onglet fermé, HTTPS requis) + compteur dans le titre + ping Discord dans un salon (`STAFF_CHANNEL_ID`) |
+| **Accueil** | écran à cartes : Tickets ouverts, Non assignés, Statistiques (+ Macros / Réglages « bientôt ») |
 
-## 2. Créer l'application Discord
+**Pas encore fait** : présence staff · fiche membre · transcript téléchargeable ·
+page Réglages · personnalisation d'interface. (Passes 2 et 3.)
 
-1. https://discord.com/developers/applications → **New Application**
-2. Onglet **Bot** :
-   - **Reset Token** → `BOT_TOKEN`
-   - Active **MESSAGE CONTENT INTENT** ✅ et **SERVER MEMBERS INTENT** ✅
-3. Onglet **OAuth2** :
-   - copie **Client ID** → `CLIENT_ID`
-   - **Reset Secret** → `CLIENT_SECRET`
-   - **Redirects** → **Add Redirect** → `http://127.0.0.1:53134/auth/callback`
-     (en dev ; ajoute aussi `https://ton-domaine/auth/callback` une fois hébergé)
-4. **Inviter le bot** (remplace `CLIENT_ID`) :
-   `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot&permissions=68608`
+---
 
-## 3. Récupérer les IDs
+## État du déploiement (au 2026-09-01)
 
-Discord → Paramètres → **Avancés** → **Mode développeur** ON, puis clic droit :
+| | Sur GitHub / en ligne | Seulement en local (à pousser) |
+|---|---|---|
+| Bot + web + toutes les fonctions ci-dessus | ✅ (commits `Yuza Support` + `refonte design Volt`) | — |
+| **Passe 1** : renommer, priorité, trace d'assignation, vue Staff | ❌ | ✅ (fichiers modifiés non commités) |
 
-- **GUILD_ID** — sur l'icône du serveur
-- **STAFF_ROLE_IDS** — sur le(s) rôle(s) staff (séparés par des virgules)
-- **STAFF_CHANNEL_ID** *(option)* — sur le salon d'annonce des tickets
-- **STAFF_TIERS** *(option)* — pour l'escalade : `Responsable:roleID,Admin:roleID`
-  (du plus bas au plus haut niveau)
-
-## 4. Configurer
+Pour mettre en ligne la Passe 1 (dans le dossier du projet, sur ton PC) :
 
 ```bash
-copy .env.example .env
+git add .
+```
+```bash
+git commit -m "passe 1 : renommer, priorite, vue staff"
+```
+```bash
+git push
 ```
 
-Remplis `.env`. `SESSION_SECRET` = n'importe quelle longue chaîne aléatoire.
+→ Railway redéploie automatiquement (~1 min). Onglet **Deployments** dans Railway :
+attends le vert, puis recharge le site avec **Ctrl + Shift + R**.
 
-## 5. Installer + lancer
+---
+
+## Config (.env / Railway Variables)
+
+| Variable | Rôle |
+|---|---|
+| `BOT_TOKEN` `CLIENT_ID` `CLIENT_SECRET` | application Discord |
+| `GUILD_ID` | serveur où on vérifie les rôles |
+| `STAFF_ROLE_IDS` | rôles autorisés (virgules) |
+| `SESSION_SECRET` | signe les sessions (longue chaîne au hasard) |
+| `HOST` | `0.0.0.0` sur Railway, `127.0.0.1` en local |
+| `PORT` | 8080 sur Railway (ou laissé à Railway) ; 53134 en local |
+| `OAUTH_REDIRECT_URI` | `https://ton-domaine/auth/callback` — **identique dans Discord Portal** |
+| `DATA_DIR` | `/data` sur Railway (avec un Volume) pour garder les données |
+| `STAFF_CHANNEL_ID` | *(option)* salon d'annonce des nouveaux tickets |
+| `STAFF_PING_ROLE_ID` | *(option)* rôle mentionné dans l'annonce |
+| `STAFF_TIERS` | *(option)* `Responsable:roleID,Admin:roleID` pour l'escalade |
+| `PUSH_CONTACT` | *(option)* `mailto:toi@exemple.com` pour le Web Push |
+
+Fichiers éditables à la main : `server/categories.json`, `server/welcome.txt`,
+`server/blacklist.json`.
+
+---
+
+## Voir / tester en local
 
 ```bash
 npm install
 npm run server
 ```
 
-Tu dois voir `[bot] connecté en tant que ...` et `[server] à l'écoute sur ...`.
+Puis ouvre `http://127.0.0.1:53134/`. (Le launcher Electron n'est plus utilisé.)
 
-## 6. Utiliser
+## Mettre à jour
 
-Ouvre **http://127.0.0.1:53134/** dans un navigateur → **Se connecter avec
-Discord** → autorise → tu arrives sur l'interface tickets.
+Sur ton PC : `git add .` → `git commit -m "..."` → `git push`.
+Railway redéploie tout seul. Les données du volume sont conservées.
 
-Pour tester : depuis un **autre compte Discord** (membre du serveur), envoie un
-MP au bot → le ticket apparaît → réponds → le client reçoit le MP.
+## Hébergement
 
----
-
-## Fonctionnalités
-
-- **Message d'accueil auto** — à l'ouverture/relance d'un ticket, le bot répond
-  au client. Texte éditable dans `server/welcome.txt` (`{name}` = pseudo du
-  client ; fichier vide = désactivé). Apparaît en gris dans la conversation.
-- **Notes internes** (case à cocher) — visibles staff, jamais envoyées au client
-- **Historique** — filtre Ouverts / Clôturés / Tous + recherche (nom, ID, contenu)
-- **Catégories** — éditables dans `server/categories.json`, menu par ticket,
-  sidebar groupée repliable
-- **Assignation** — bouton *Prendre* / *Lâcher* / *Reprendre* ; réponse =
-  auto-assignation si personne n'est dessus
-- **Escalade** (si `STAFF_TIERS` défini) — menu *niveau* par ticket ; escalader
-  = les staff sous ce niveau **perdent l'accès** au contenu (vérifié serveur)
-- **Pièces jointes** — le client envoie une image/fichier dans son MP → visible
-  dans la conversation (téléchargé et re-servi par le serveur, dossier `uploads/`).
-  Le staff clique 📎 dans la barre d'envoi pour renvoyer un fichier au client.
-- **Blacklist** — bouton « 🚫 Bloquer » dans l'en-tête du ticket : le client ne
-  peut plus ouvrir de ticket (ses MP au bot sont ignorés). Liste de départ
-  éditable dans `server/blacklist.json` ; « ✅ Débloquer » pour annuler.
-- **Web Push** — notifications même onglet fermé / PC en veille. Clés VAPID
-  auto-générées (`server/vapid.json`). **Nécessite HTTPS** en prod (marche sur
-  `localhost` en test). Le staff clique « 🔔 Activer les notifications ».
-- **Stats** — bouton « 📊 Stats » en bas : total / ouverts / clôturés / non
-  assignés, temps de première réponse moyen, graphe tickets/jour (14 j),
-  répartition par catégorie et par staff (limité aux tickets visibles à ton niveau)
-- **Notifications** :
-  - navigateur : bouton « 🔔 Activer les notifications » en bas ; toast quand un
-    client écrit et que l'onglet n'est pas au premier plan (garde un onglet ouvert)
-  - Discord : si `STAFF_CHANNEL_ID` défini, `@rôle 📩 X a ouvert un ticket`
-  - compteur de non-lus dans le titre de l'onglet
-
-## Hébergement 24/7 (pour que les staff y accèdent de chez eux)
-
-Mettre le repo sur une petite VM (Oracle Cloud Always Free, VPS…) et :
-
-1. `.env` : `HOST=0.0.0.0`, `OAUTH_REDIRECT_URI=https://ton-domaine/auth/callback`
-2. Ajouter cette redirect dans le Developer Portal
-3. Mettre le serveur derrière **HTTPS** (Caddy, Cloudflare Tunnel, nginx) — requis
-   pour les cookies sécurisés et les notifications navigateur
-4. Lancer `npm run server` en service (pm2, systemd…)
-5. Les staff ouvrent `https://ton-domaine/`
-
-## Notes
-
-- Le **token du bot** ne quitte jamais `server/`. Le front reçoit un cookie de
-  session signé (HMAC) valable 12 h ; chaque action revérifie le rôle serveur.
-- Le dossier `launcher/` (app Electron) reste fonctionnel mais n'est plus la
-  voie principale ; il se connecte au même serveur via `?token=`.
-- Prochaines idées : macros de réponse, pièces jointes, salon Discord de log,
-  Web Push (notifs même onglet fermé).
+Guide Railway : `RAILWAY.md`. Guide VM gratuite : `DEPLOY.md`.

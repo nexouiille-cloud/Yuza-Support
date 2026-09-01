@@ -19,8 +19,11 @@ let tiers = [];
 let maxLvl = 1;
 const blacklist = new Set();
 let vapidPublic = '';
+let staffOnly = false; // vue "staff seulement" dans la conversation
 
 const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
+const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
+const ticketLabel = (t) => (t.title ? t.title : t.username);
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -448,8 +451,11 @@ function ticketRow(t) {
     (bl ? ' bl' : '') +
     (t.assignee_id && !mine ? ' assigned-other' : '');
   el.dataset.uid = t.user_id;
+  const pri = t.priority && t.priority !== 'normal'
+    ? `<span class="pri ${t.priority}"></span>`
+    : '';
   el.innerHTML =
-    `<div class="n"><span>${esc(t.username)}</span>` +
+    `<div class="n"><span>${pri}${esc(ticketLabel(t))}</span>` +
     `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
     `<div class="p">${esc(t.last_preview || '')}</div>` +
     (t.assignee_id
@@ -496,9 +502,11 @@ function renderSidebar() {
   }
 
   for (const key of groups.keys()) {
-    const items = groups
-      .get(key)
-      .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+    const items = groups.get(key).sort((a, b) => {
+      const pa = PRI[a.priority] ?? 2;
+      const pb = PRI[b.priority] ?? 2;
+      return pa - pb || (b.updated_at || 0) - (a.updated_at || 0);
+    });
     if (!items.length) continue;
 
     const label = key === NONE ? 'Non trié' : key;
@@ -533,8 +541,21 @@ function buildCatSelect() {
 
 function syncHeader() {
   const t = current ? tickets.get(current) : null;
-  $('#headName').textContent = t ? t.username : current || '—';
-  $('#headWho').textContent = t ? `ID ${current} · ${t.status}` : '';
+  $('#headName').textContent = t ? ticketLabel(t) : current || '—';
+  $('#headWho').textContent = t
+    ? `${t.username} · ID ${current} · ${t.status}`
+    : '';
+  $('#renameBtn').classList.toggle('hidden', !t);
+  $('#staffViewBtn').classList.toggle('hidden', !t);
+  $('#staffViewBtn').classList.toggle('on', staffOnly);
+
+  const pri = $('#priSelect');
+  pri.classList.toggle('hidden', !t);
+  if (t) {
+    pri.value = t.priority || 'normal';
+    pri.classList.toggle('p-high', pri.value === 'high');
+    pri.classList.toggle('p-urgent', pri.value === 'urgent');
+  }
 
   const mine = !!(t && t.assignee_id && t.assignee_id === myId);
   $('#headAssignee').textContent =
@@ -607,6 +628,30 @@ $('#catSelect').addEventListener('change', (e) => {
   );
 });
 
+$('#renameBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const v = window.prompt(
+    'Titre du ticket (vide = pseudo du client) :',
+    t?.title || '',
+  );
+  if (v === null) return;
+  ws.send(JSON.stringify({ type: 'rename', userId: current, title: v.trim() }));
+});
+
+$('#priSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({ type: 'priority', userId: current, priority: e.target.value }),
+  );
+});
+
+$('#staffViewBtn').addEventListener('click', () => {
+  staffOnly = !staffOnly;
+  $('#staffViewBtn').classList.toggle('on', staffOnly);
+  renderMessages();
+});
+
 $('#takeBtn').addEventListener('click', () => {
   if (!current || !ws || ws.readyState !== 1) return;
   const t = tickets.get(current);
@@ -649,11 +694,14 @@ $('#escSelect').addEventListener('change', (e) => {
 });
 
 function renderMessages() {
-  const arr = msgCache.get(current) || [];
+  let arr = msgCache.get(current) || [];
+  if (staffOnly) arr = arr.filter((m) => m.author !== 'client');
   const box = $('#msgs');
   box.innerHTML = '';
   if (!arr.length) {
-    box.innerHTML = '<div class="m system">Aucun message.</div>';
+    box.innerHTML = `<div class="m system">${
+      staffOnly ? 'Aucun message staff.' : 'Aucun message.'
+    }</div>`;
     return;
   }
   for (const msg of arr) {

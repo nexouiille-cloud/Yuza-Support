@@ -58,6 +58,8 @@ export function upsertTicket(userId, username, preview) {
     data.tickets[userId] = {
       user_id: userId,
       username: username || 'client',
+      title: null,
+      priority: 'normal',
       status: 'open',
       category: null,
       escalation_level: 1,
@@ -86,6 +88,25 @@ export function setTicketEscalation(userId, level) {
   const t = data.tickets[userId];
   if (t) {
     t.escalation_level = Math.max(1, level | 0);
+    t.updated_at = Date.now();
+    save();
+  }
+}
+
+export function setTicketTitle(userId, title) {
+  const t = data.tickets[userId];
+  if (t) {
+    t.title = title ? String(title).slice(0, 80) : null;
+    t.updated_at = Date.now();
+    save();
+  }
+}
+
+const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+export function setTicketPriority(userId, p) {
+  const t = data.tickets[userId];
+  if (t && PRIORITIES.includes(p)) {
+    t.priority = p;
     t.updated_at = Date.now();
     save();
   }

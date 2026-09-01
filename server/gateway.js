@@ -13,6 +13,8 @@ import {
   setTicketCategory,
   setTicketAssignee,
   setTicketEscalation,
+  setTicketTitle,
+  setTicketPriority,
   getStats,
   getBlacklist,
   setBlacklist,
@@ -312,6 +314,50 @@ export function registerGateway(app) {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         if (msg.take) setTicketAssignee(msg.userId, session.uid, session.name);
         else setTicketAssignee(msg.userId, null, null);
+        const sys = addMessage(
+          msg.userId,
+          'system',
+          'Système',
+          msg.take
+            ? `${session.name} a pris le ticket en charge`
+            : `${session.name} a lâché le ticket`,
+        );
+        broadcastTicket(msg.userId, { type: 'message', message: sys });
+        pushTickets();
+        return;
+      }
+
+      /* ---- renommer un ticket ---- */
+      if (msg.type === 'rename') {
+        if (!msg.userId || !canSee(entry, msg.userId)) return;
+        const title = String(msg.title || '').trim();
+        setTicketTitle(msg.userId, title);
+        const sys = addMessage(
+          msg.userId,
+          'system',
+          'Système',
+          title
+            ? `Ticket renommé « ${title} » par ${session.name}`
+            : `Titre du ticket réinitialisé par ${session.name}`,
+        );
+        broadcastTicket(msg.userId, { type: 'message', message: sys });
+        pushTickets();
+        return;
+      }
+
+      /* ---- priorité d'un ticket ---- */
+      if (msg.type === 'priority') {
+        if (!msg.userId || !canSee(entry, msg.userId)) return;
+        const labels = { low: 'basse', normal: 'normale', high: 'haute', urgent: 'urgente' };
+        if (!labels[msg.priority]) return;
+        setTicketPriority(msg.userId, msg.priority);
+        const sys = addMessage(
+          msg.userId,
+          'system',
+          'Système',
+          `Priorité passée à « ${labels[msg.priority]} » par ${session.name}`,
+        );
+        broadcastTicket(msg.userId, { type: 'message', message: sys });
         pushTickets();
         return;
       }

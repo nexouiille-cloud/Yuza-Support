@@ -102,9 +102,17 @@
         <div id="main">
           <div id="head">
             <strong id="headName">—</strong>
+            <button id="renameBtn" class="hidden iconbtn" title="Renommer le ticket">✏️</button>
             <span id="headWho" class="who"></span>
             <span id="headAssignee"></span>
             <span class="sp"></span>
+            <button id="staffViewBtn" class="hidden iconbtn" title="Afficher seulement les messages staff">👁 Staff</button>
+            <select id="priSelect" class="hidden" title="Priorité du ticket">
+              <option value="low">Priorité : basse</option>
+              <option value="normal">Priorité : normale</option>
+              <option value="high">Priorité : haute</option>
+              <option value="urgent">Priorité : urgente</option>
+            </select>
             <button id="blockBtn" class="hidden" title="Empêcher ce client d'ouvrir des tickets">🚫 Bloquer</button>
             <button id="takeBtn" class="hidden">Prendre</button>
             <select id="escSelect" class="hidden" title="Niveau du ticket / escalade"></select>
