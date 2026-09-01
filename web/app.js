@@ -20,6 +20,7 @@ let maxLvl = 1;
 const blacklist = new Set();
 let vapidPublic = '';
 let staffOnly = false; // vue "staff seulement" dans la conversation
+let presence = []; // staff en ligne
 
 const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
 const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -115,6 +116,55 @@ function renderHome() {
   $('#cOpenHint').textContent = unassigned
     ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
     : 'tout est pris en charge';
+}
+
+/* ---------------- présence staff ---------------- */
+function renderPresence() {
+  const box = $('#presence');
+  box.classList.toggle('hidden', !presence.length);
+  box.innerHTML =
+    `<span class="who-lbl">${presence.length} en ligne&nbsp;:</span>` +
+    presence
+      .map((s) => `<span class="who-chip">${esc(s.name)}</span>`)
+      .join('');
+  $('#statusPresence').textContent = presence.length
+    ? `${presence.length} staff en ligne`
+    : '';
+}
+
+/* ---------------- fiche membre ---------------- */
+function renderMemberModal(p, query) {
+  const body = $('#mmBody');
+  if (!p) {
+    body.innerHTML = `<div class="mm-empty">Aucun ticket trouvé pour « ${esc(query || '')} ».</div>`;
+    $('#memberModal').classList.remove('hidden');
+    return;
+  }
+  const row = (k, v, bad) => `<div class="mm-row"><span class="k">${k}</span><span class="v${bad ? ' bad' : ''}">${v}</span></div>`;
+  const d = (ts) => new Date(ts).toLocaleString('fr-FR');
+  body.innerHTML =
+    row('Pseudo', esc(p.username)) +
+    row('ID Discord', esc(p.user_id)) +
+    (p.title ? row('Titre du ticket', esc(p.title)) : '') +
+    row('Statut', p.status === 'closed' ? 'clôturé' : 'ouvert') +
+    row('Catégorie', esc(p.category || '—')) +
+    row('Priorité', esc(p.priority)) +
+    (p.escalation_level > 1 ? row('Niveau', esc(levelName(p.escalation_level))) : '') +
+    row('Pris en charge par', esc(p.assignee_name || 'personne')) +
+    row('Bloqué', p.blacklisted ? 'oui' : 'non', p.blacklisted) +
+    row('Premier contact', d(p.first_at)) +
+    row('Dernière activité', d(p.last_at)) +
+    row('Messages (total)', p.messages_total) +
+    row('Messages du client', p.messages_client) +
+    row('Notes internes', p.notes_count) +
+    row('Staff ayant répondu', p.staff_replied.length ? esc(p.staff_replied.join(', ')) : '—') +
+    `<div class="mm-actions"><button class="btn-accent" id="mmOpen">Ouvrir le ticket</button></div>`;
+  $('#memberModal').classList.remove('hidden');
+  $('#mmOpen').addEventListener('click', () => {
+    $('#memberModal').classList.add('hidden');
+    showView('tickets');
+    openTicket(p.user_id);
+  });
 }
 
 /* ---------------- notifications ---------------- */
@@ -240,15 +290,26 @@ function handle(m) {
       vapidPublic = m.vapidPublic || vapidPublic;
       blacklist.clear();
       (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
+      presence = m.staff || presence;
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
       setConn('ok');
       setupNotifs();
       setStatus(`${m.name} · ${myLevelLabel}`);
+      renderPresence();
       renderSidebar();
       renderHome();
       if (!current) showView('home');
       else syncHeader();
+      break;
+
+    case 'presence':
+      presence = Array.isArray(m.staff) ? m.staff : [];
+      renderPresence();
+      break;
+
+    case 'member':
+      renderMemberModal(m.profile, m.query);
       break;
 
     case 'blacklist':
@@ -546,6 +607,8 @@ function syncHeader() {
     ? `${t.username} · ID ${current} · ${t.status}`
     : '';
   $('#renameBtn').classList.toggle('hidden', !t);
+  $('#ficheBtn').classList.toggle('hidden', !t);
+  $('#transcriptBtn').classList.toggle('hidden', !t);
   $('#staffViewBtn').classList.toggle('hidden', !t);
   $('#staffViewBtn').classList.toggle('on', staffOnly);
 
@@ -644,6 +707,33 @@ $('#priSelect').addEventListener('change', (e) => {
   ws.send(
     JSON.stringify({ type: 'priority', userId: current, priority: e.target.value }),
   );
+});
+
+/* fiche membre + transcript */
+$('#ficheBtn').addEventListener('click', () => {
+  if (current && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'member', userId: current }));
+  }
+});
+$('#transcriptBtn').addEventListener('click', () => {
+  if (!current) return;
+  const a = document.createElement('a');
+  a.href = '/api/transcript/' + encodeURIComponent(current);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus('Transcript téléchargé.');
+});
+$('#memberSearch').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const q = e.target.value.trim();
+  if (q && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'member', query: q }));
+  }
+});
+$('#mmClose').addEventListener('click', () => $('#memberModal').classList.add('hidden'));
+$('#memberModal').addEventListener('click', (e) => {
+  if (e.target.id === 'memberModal') $('#memberModal').classList.add('hidden');
 });
 
 $('#staffViewBtn').addEventListener('click', () => {

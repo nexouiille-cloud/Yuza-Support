@@ -21,7 +21,13 @@ import {
   handleSystemMessage,
   relayStaffMessage,
 } from './gateway.js';
-import { getTicket, addMessage, addPushSub, removePushSub } from './db.js';
+import {
+  getTicket,
+  addMessage,
+  addPushSub,
+  removePushSub,
+  listMessages,
+} from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
 
@@ -123,6 +129,68 @@ app.post('/api/push/unsubscribe', async (req, reply) => {
   if (!s) return reply.code(401).send({ error: 'unauthorized' });
   if (req.body?.endpoint) removePushSub(req.body.endpoint);
   return { ok: true };
+});
+
+// --- Transcript d'un ticket (fichier HTML téléchargeable) ---
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+
+function buildTranscript(t, msgs) {
+  const rows = msgs
+    .map((m) => {
+      const when = new Date(m.created_at).toLocaleString('fr-FR');
+      const atts = (m.attachments || [])
+        .map((a) => `<a href="${esc(a.url)}">${esc(a.name || 'fichier')}</a>`)
+        .join(' ');
+      return `<div class="m ${esc(m.author)}"><div class="meta">${esc(
+        m.author_name,
+      )} · ${when}</div><div class="c">${esc(m.content)}${
+        atts ? `<div class="att">${atts}</div>` : ''
+      }</div></div>`;
+    })
+    .join('\n');
+  return `<!doctype html><meta charset="utf-8">
+<title>Ticket ${esc(t.title || t.username)} — ${esc(t.user_id)}</title>
+<style>
+  body{font:14px/1.6 system-ui,Segoe UI,sans-serif;background:#0f0d0c;color:#eee;max-width:760px;margin:24px auto;padding:0 16px}
+  h1{font-size:18px} .head{color:#aaa;font-size:13px;margin-bottom:20px;border-bottom:1px solid #333;padding-bottom:12px}
+  .m{margin:8px 0;padding:8px 12px;border-radius:10px;max-width:80%}
+  .m.client{background:#20202a}
+  .m.staff{background:#3a2a12;margin-left:auto}
+  .m.note{background:#302a17;border:1px solid #574a22;max-width:100%}
+  .m.system{background:none;color:#888;text-align:center;font-size:12px;max-width:100%}
+  .meta{font-size:11px;color:#999;margin-bottom:2px}
+  .att a{color:#ffbb3d}
+</style>
+<h1>Ticket — ${esc(t.title || t.username)}</h1>
+<div class="head">
+  Client : ${esc(t.username)} (ID ${esc(t.user_id)})<br>
+  Statut : ${esc(t.status)} · Catégorie : ${esc(t.category || 'aucune')} · Priorité : ${esc(t.priority || 'normale')}<br>
+  Ouvert le ${new Date(t.created_at).toLocaleString('fr-FR')} · Export le ${new Date().toLocaleString('fr-FR')}
+</div>
+${rows}`;
+}
+
+app.get('/api/transcript/:userId', async (req, reply) => {
+  const s = sessionOf(req);
+  if (!s) return reply.code(401).send({ error: 'unauthorized' });
+  const { isStaff, level } = await getStaffMember(s.uid);
+  if (!isStaff) return reply.code(403).send({ error: 'not_staff' });
+  const t = getTicket(req.params.userId);
+  if (!t) return reply.code(404).send({ error: 'not_found' });
+  if (level < (t.escalation_level || 1)) {
+    return reply.code(403).send({ error: 'denied' });
+  }
+  const name = (t.username || 'client').replace(/[^\w.-]+/g, '_');
+  reply
+    .header(
+      'Content-Disposition',
+      `attachment; filename="ticket-${name}-${req.params.userId}.html"`,
+    )
+    .type('text/html; charset=utf-8')
+    .send(buildTranscript(t, listMessages(req.params.userId, 5000)));
 });
 
 // --- Pièce jointe staff -> client ---

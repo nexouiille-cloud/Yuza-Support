@@ -19,6 +19,8 @@ import {
   getBlacklist,
   setBlacklist,
   updatePushSubLevel,
+  getMemberProfile,
+  findTicketId,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -49,6 +51,20 @@ function send(entry, obj) {
 // à tous les staff connectés (infos non sensibles)
 function broadcastAll(obj) {
   for (const c of clients) send(c, obj);
+}
+
+// liste des staff en ligne (dédupliquée par utilisateur)
+function presenceList() {
+  const seen = new Map();
+  for (const c of clients) {
+    if (c.ready && !seen.has(c.session.uid)) {
+      seen.set(c.session.uid, { uid: c.session.uid, name: c.session.name, level: c.level });
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+function broadcastPresence() {
+  broadcastAll({ type: 'presence', staff: presenceList() });
 }
 
 // événement lié à un ticket : seulement aux staff dont le niveau suffit
@@ -170,9 +186,11 @@ export function registerGateway(app) {
         maxLevel,
         blacklist: getBlacklist(),
         vapidPublic: vapidPublicKey(),
+        staff: presenceList(),
       });
       send(entry, { type: 'categories', categories: config.categories });
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
+      broadcastPresence();
     });
 
     socket.on('message', async (raw) => {
@@ -196,6 +214,18 @@ export function registerGateway(app) {
           (id) => entry.level >= tLevel(getTicket(id)),
         );
         send(entry, { type: 'search_results', q: msg.q || '', ids });
+        return;
+      }
+
+      /* ---- fiche membre ---- */
+      if (msg.type === 'member') {
+        const id = msg.userId || findTicketId(msg.query);
+        const profile = id ? getMemberProfile(id) : null;
+        if (profile && entry.level < tLevel({ escalation_level: profile.escalation_level })) {
+          send(entry, { type: 'member', profile: null, query: msg.query || '' });
+          return;
+        }
+        send(entry, { type: 'member', profile, query: msg.query || '' });
         return;
       }
 
@@ -415,13 +445,14 @@ export function registerGateway(app) {
       }
     });
 
-    socket.on('close', () => clients.delete(entry));
-    socket.on('error', () => clients.delete(entry));
+    socket.on('close', () => { clients.delete(entry); broadcastPresence(); });
+    socket.on('error', () => { clients.delete(entry); broadcastPresence(); });
   });
 
   // Re-vérification périodique : rôle + niveau.
   setInterval(
     async () => {
+      let changed = false;
       for (const c of [...clients]) {
         const { isStaff, level } = await getStaffMember(c.session.uid);
         if (!isStaff) {
@@ -430,6 +461,7 @@ export function registerGateway(app) {
             c.socket.close();
           }
           clients.delete(c);
+          changed = true;
           continue;
         }
         if (level !== c.level) {
@@ -447,8 +479,10 @@ export function registerGateway(app) {
             vapidPublic: vapidPublicKey(),
           });
           send(c, { type: 'tickets', tickets: visibleTickets(level) });
+          changed = true;
         }
       }
+      if (changed) broadcastPresence();
     },
     Math.max(30, config.roleRecheckSeconds) * 1000,
   ).unref?.();

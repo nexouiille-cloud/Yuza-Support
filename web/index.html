@@ -57,6 +57,8 @@
       <section id="viewHome" class="view active">
         <div class="home-hi">Salut <span class="accent" id="hiName">—</span> 👋</div>
         <div class="home-sub">Bienvenue sur le panel support.<span class="lvl" id="hiLevel">—</span></div>
+        <div id="presence" class="hidden"></div>
+        <input id="memberSearch" type="search" placeholder="🔍  Fiche membre — pseudo ou ID Discord, puis Entrée" autocomplete="off" />
         <div class="cards">
           <button class="card" data-go="tickets">
             <div class="ico">🎫</div>
@@ -103,6 +105,8 @@
           <div id="head">
             <strong id="headName">—</strong>
             <button id="renameBtn" class="hidden iconbtn" title="Renommer le ticket">✏️</button>
+            <button id="ficheBtn" class="hidden iconbtn" title="Fiche du membre">👤</button>
+            <button id="transcriptBtn" class="hidden iconbtn" title="Télécharger la conversation">⬇</button>
             <span id="headWho" class="who"></span>
             <span id="headAssignee"></span>
             <span class="sp"></span>
@@ -145,8 +149,17 @@
       <div id="status">
         <span class="dot" id="connDot"></span>
         <span id="statusText">chargement…</span>
+        <span class="sp"></span>
+        <span id="statusPresence"></span>
       </div>
 
+    </div>
+  </div>
+
+  <div id="memberModal" class="hidden">
+    <div class="mm-card">
+      <div class="mm-head"><strong>Fiche membre</strong><button id="mmClose" class="linkbtn">Fermer ✕</button></div>
+      <div id="mmBody"></div>
     </div>
   </div>
 

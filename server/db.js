@@ -145,6 +145,49 @@ export function addMessage(userId, author, authorName, content, attachments = []
   return msg;
 }
 
+/* ---------------- fiche membre ---------------- */
+export function findTicketId(query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return null;
+  if (data.tickets[q]) return q; // ID exact
+  for (const t of Object.values(data.tickets)) {
+    if (String(t.user_id) === q) return t.user_id;
+    if ((t.username || '').toLowerCase().includes(q)) return t.user_id;
+  }
+  return null;
+}
+
+export function getMemberProfile(userId) {
+  const t = data.tickets[userId];
+  if (!t) return null;
+  const msgs = data.messages[userId] || [];
+  const staff = new Set();
+  let notes = 0;
+  let fromClient = 0;
+  for (const m of msgs) {
+    if (m.author === 'staff') staff.add(m.author_name.replace(/\s*\([^)]*\)\s*$/, '').trim());
+    else if (m.author === 'note') notes++;
+    else if (m.author === 'client') fromClient++;
+  }
+  return {
+    user_id: userId,
+    username: t.username,
+    title: t.title || null,
+    status: t.status,
+    category: t.category || null,
+    priority: t.priority || 'normal',
+    escalation_level: t.escalation_level || 1,
+    assignee_name: t.assignee_name || null,
+    blacklisted: isBlacklisted(userId),
+    first_at: t.created_at,
+    last_at: t.updated_at,
+    messages_total: msgs.length,
+    messages_client: fromClient,
+    notes_count: notes,
+    staff_replied: [...staff],
+  };
+}
+
 /* ---------------- blacklist ---------------- */
 export function getBlacklist() {
   return [...new Set([...(config.blacklistSeed || []), ...data.blacklist])];

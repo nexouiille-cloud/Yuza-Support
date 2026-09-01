@@ -156,6 +156,19 @@ button:disabled { opacity: 0.45; cursor: default; }
   background: rgba(255, 157, 0, 0.12); color: var(--accent-bright); font-size: 12px;
   border: 1px solid rgba(255, 157, 0, 0.25);
 }
+#presence { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; max-width: 1000px; }
+#presence .who-chip {
+  display: flex; align-items: center; gap: 6px; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px 4px 8px; font-size: 12px;
+}
+#presence .who-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px 1px rgba(67, 209, 98, 0.5); }
+#presence .who-lbl { color: var(--text-faint); font-size: 12px; align-self: center; }
+#memberSearch {
+  width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 10px 13px; border-radius: 10px; font: inherit; margin-bottom: 26px;
+}
+#memberSearch:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
+
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; max-width: 1000px; }
 .card {
   position: relative; overflow: hidden; text-align: left;
@@ -324,6 +337,21 @@ button:disabled { opacity: 0.45; cursor: default; }
 #status .dot.bad { background: var(--danger); }
 .linkbtn { background: none; border: 0; color: var(--text-dim); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 2px 4px; }
 .linkbtn:hover { color: var(--text); background: none; }
+#status .sp { flex: 1; }
+#statusPresence { color: var(--text-faint); }
+
+/* fiche membre */
+#memberModal { position: fixed; inset: 0; background: rgba(0,0,0,0.62); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.mm-card { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 16px; padding: 22px; width: min(460px, 92vw); max-height: 88vh; overflow-y: auto; }
+.mm-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.mm-head strong { font-family: "Chakra Petch", sans-serif; }
+.mm-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.mm-row:last-of-type { border-bottom: 0; }
+.mm-row .k { color: var(--text-dim); }
+.mm-row .v { text-align: right; }
+.mm-row .v.bad { color: var(--danger); }
+.mm-actions { margin-top: 16px; display: flex; gap: 8px; }
+.mm-empty { color: var(--text-dim); padding: 8px 0 4px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 760px) {

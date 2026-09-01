@@ -50,9 +50,11 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Stats** | vue dédiée : total / ouverts / clôturés / non assignés, temps de réponse moyen, graphe 14 j, par catégorie, par staff |
 | **Notifications** | toast navigateur (onglet ouvert) + **Web Push** (onglet fermé, HTTPS requis) + compteur dans le titre + ping Discord dans un salon (`STAFF_CHANNEL_ID`) |
 | **Accueil** | écran à cartes : Tickets ouverts, Non assignés, Statistiques (+ Macros / Réglages « bientôt ») |
+| **Présence staff** | qui est en ligne — chips sur l'accueil + compteur dans la barre de statut, temps réel |
+| **Fiche membre** | recherche pseudo/ID sur l'accueil (ou bouton 👤 dans un ticket) → profil : 1er contact, nb messages, staff ayant répondu, statut, blacklist… |
+| **Transcript** | bouton ⬇ dans un ticket → télécharge la conversation en fichier HTML autonome |
 
-**Pas encore fait** : présence staff · fiche membre · transcript téléchargeable ·
-page Réglages · personnalisation d'interface. (Passes 2 et 3.)
+**Pas encore fait** : page Réglages · personnalisation d'interface. (Passe 3.)
 
 ---
 
