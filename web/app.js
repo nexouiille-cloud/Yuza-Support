@@ -1,0 +1,656 @@
+let ws = null;
+let current = null;
+
+const tickets = new Map(); // userId -> ticket
+const msgCache = new Map(); // userId -> [messages]
+
+let filterMode = 'open';        // 'open' | 'closed' | 'all'
+let searchQuery = '';
+let searchIds = null;
+let categories = [];
+const collapsedGroups = new Set();
+const NONE = '__none__';
+
+let myId = null;
+let myLevel = 1;
+let tiers = [];
+let maxLvl = 1;
+const blacklist = new Set();
+let vapidPublic = '';
+
+const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+
+function setStatus(s) { $('#statusText').textContent = s; }
+
+function updateTitle() {
+  let n = 0;
+  for (const t of tickets.values()) n += t.unread || 0;
+  document.title = (n ? `(${n}) ` : '') + 'Yuza Support';
+}
+
+/* ---------------- notifications ---------------- */
+function setupNotifs() {
+  const btn = $('#notifBtn');
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'granted') {
+    setupPush();
+    return;
+  }
+  if (Notification.permission === 'default') {
+    btn.classList.remove('hidden');
+    btn.onclick = async () => {
+      try {
+        await Notification.requestPermission();
+      } catch {}
+      btn.classList.add('hidden');
+      setupPush();
+    };
+  }
+}
+
+function urlB64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+// Web Push : notifications même quand l'onglet est fermé (nécessite HTTPS en prod).
+async function setupPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!vapidPublic || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(vapidPublic),
+      });
+    }
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(sub),
+    });
+  } catch (e) {
+    console.warn('[push] non activé :', e.message || e);
+  }
+}
+
+function maybeNotify(m) {
+  if (!document.hidden && m.userId === current) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted')
+    return;
+  const title = m.isNew
+    ? '📩 Nouveau ticket'
+    : m.reopened
+      ? '📩 Ticket relancé'
+      : '💬 Nouveau message';
+  const body = `${m.name || 'Client'} : ${m.preview || ''}`.slice(0, 140);
+  try {
+    const n = new Notification(title, { body });
+    n.onclick = () => {
+      window.focus();
+      openTicket(m.userId);
+    };
+  } catch {}
+}
+
+/* ---------------- démarrage : session ? ---------------- */
+async function init() {
+  let me = null;
+  try {
+    const r = await fetch('/api/me', { credentials: 'same-origin' });
+    if (r.ok) me = await r.json();
+  } catch {}
+
+  if (!me) {
+    const err = new URLSearchParams(location.search).get('error');
+    if (err === 'not_staff')
+      $('#loginMsg').textContent =
+        "Ce compte n'a pas de rôle staff sur le serveur.";
+    else if (err === 'bad_state')
+      $('#loginMsg').textContent = 'Session de connexion expirée, réessaie.';
+    else if (err)
+      $('#loginMsg').textContent = `Connexion refusée (${err}).`;
+    setStatus('non connecté');
+    return;
+  }
+  connect();
+}
+init();
+
+/* ---------------- websocket ---------------- */
+function connect() {
+  const wsUrl = location.origin.replace(/^http/, 'ws') + '/gateway';
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => setStatus('connecté');
+  ws.onclose = () => setStatus('déconnecté — recharge la page');
+  ws.onerror = () => setStatus('erreur de connexion');
+  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+}
+
+function handle(m) {
+  switch (m.type) {
+    case 'hello':
+      if (m.uid) myId = m.uid;
+      myLevel = m.level || 1;
+      tiers = Array.isArray(m.tiers) ? m.tiers : [];
+      maxLvl = m.maxLevel || 1;
+      vapidPublic = m.vapidPublic || vapidPublic;
+      blacklist.clear();
+      (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
+      $('#login').classList.add('hidden');
+      $('#app').classList.add('on');
+      $('#logoutBtn').classList.remove('hidden');
+      $('#statsBtn').classList.remove('hidden');
+      setupNotifs();
+      setStatus(`connecté : ${m.name} · ${m.levelLabel || levelName(myLevel)}`);
+      renderSidebar();
+      if (current) syncHeader();
+      break;
+
+    case 'blacklist':
+      blacklist.clear();
+      (m.list || []).forEach((id) => blacklist.add(String(id)));
+      renderSidebar();
+      if (current) syncHeader();
+      break;
+
+    case 'kicked':
+      $('#app').classList.remove('on');
+      $('#login').classList.remove('hidden');
+      $('#loginMsg').textContent =
+        'Ton rôle staff a été retiré : accès révoqué.';
+      if (ws) ws.close();
+      break;
+
+    case 'error':
+      setStatus(`session invalide (${m.reason}) — recharge la page`);
+      break;
+
+    case 'categories':
+      categories = Array.isArray(m.categories) ? m.categories : [];
+      buildCatSelect();
+      break;
+
+    case 'tickets':
+      tickets.clear();
+      m.tickets.forEach((t) => tickets.set(t.user_id, t));
+      if (current && !tickets.has(current)) {
+        setStatus("Tu n'as plus accès à ce ticket (escaladé à un niveau supérieur).");
+        closeTicketView();
+      }
+      renderSidebar();
+      if (current) syncHeader();
+      break;
+
+    case 'denied':
+      setStatus('Accès refusé à ce ticket.');
+      if (m.userId === current) closeTicketView();
+      break;
+
+    case 'ticket_bump': {
+      const t =
+        tickets.get(m.userId) ||
+        { user_id: m.userId, username: m.name, status: 'open' };
+      t.username = m.name || t.username;
+      t.last_preview = m.preview;
+      t.updated_at = Date.now();
+      if (!m.fromStaff) {
+        t.status = 'open';
+        if (m.userId !== current) t.unread = (t.unread || 0) + 1;
+        maybeNotify(m);
+      }
+      tickets.set(m.userId, t);
+      renderSidebar();
+      break;
+    }
+
+    case 'search_results':
+      if (m.q === searchQuery) {
+        searchIds = searchQuery ? new Set(m.ids) : null;
+        renderSidebar();
+      }
+      break;
+
+    case 'messages':
+      msgCache.set(m.userId, m.messages);
+      if (m.userId === current) renderMessages();
+      break;
+
+    case 'message': {
+      const uid = m.message.user_id;
+      const arr = msgCache.get(uid) || [];
+      arr.push(m.message);
+      msgCache.set(uid, arr);
+      if (uid === current) renderMessages();
+      break;
+    }
+
+    case 'stats':
+      renderStats(m.stats);
+      break;
+
+    case 'dm_failed':
+      setStatus(
+        "⚠ impossible d'envoyer le MP à ce client (il a peut-être fermé ses MP).",
+      );
+      break;
+  }
+}
+
+/* ---------------- stats ---------------- */
+function fmtDur(ms) {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + ' s';
+  const mn = Math.round(s / 60);
+  if (mn < 60) return mn + ' min';
+  const h = Math.floor(mn / 60);
+  return `${h} h ${mn % 60} min`;
+}
+
+function rowBar(label, val, max) {
+  const pct = Math.round((val / Math.max(1, max)) * 100);
+  return (
+    `<div class="srow"><span class="sl">${esc(label)}</span>` +
+    `<span class="sbar"><span style="width:${pct}%"></span></span>` +
+    `<span class="sv">${val}</span></div>`
+  );
+}
+
+function renderStats(s) {
+  const kpi = (l, v) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const maxDay = Math.max(1, ...s.perDay.map((d) => d.count));
+  const bars = s.perDay
+    .map(
+      (d) =>
+        `<div class="bar" title="${d.date} : ${d.count}">` +
+        `<div class="fill" style="height:${Math.round((d.count / maxDay) * 100)}%"></div>` +
+        `<div class="bl">${d.date.slice(8)}</div></div>`,
+    )
+    .join('');
+
+  const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
+  const catMax = Math.max(1, ...cats.map((c) => c[1]));
+  const catRows = cats.length
+    ? cats.map(([k, v]) => rowBar(k, v, catMax)).join('')
+    : '<div class="muted">—</div>';
+
+  const staff = Object.entries(s.byStaff).sort((a, b) => b[1] - a[1]);
+  const staffMax = Math.max(1, ...staff.map((c) => c[1]));
+  const staffRows = staff.length
+    ? staff.map(([k, v]) => rowBar(k, v, staffMax)).join('')
+    : '<div class="muted">—</div>';
+
+  $('#statsBody').innerHTML =
+    `<div class="kpis">${kpi('Total', s.total)}${kpi('Ouverts', s.open)}` +
+    `${kpi('Clôturés', s.closed)}${kpi('Non assignés', s.unassigned)}` +
+    `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}</div>` +
+    `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
+    `<h4>Par catégorie</h4>${catRows}` +
+    `<h4>Réponses par staff</h4>${staffRows}`;
+  $('#statsPanel').classList.remove('hidden');
+}
+
+$('#statsBtn').addEventListener('click', () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' }));
+});
+$('#statsClose').addEventListener('click', () =>
+  $('#statsPanel').classList.add('hidden'),
+);
+$('#statsPanel').addEventListener('click', (e) => {
+  if (e.target.id === 'statsPanel') $('#statsPanel').classList.add('hidden');
+});
+
+/* ---------------- recherche + filtre ---------------- */
+let searchTimer = null;
+$('#search').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim();
+  clearTimeout(searchTimer);
+  if (!searchQuery) {
+    searchIds = null;
+    renderSidebar();
+    return;
+  }
+  searchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ type: 'search', q: searchQuery }));
+  }, 250);
+});
+document.querySelectorAll('#filters button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document
+      .querySelectorAll('#filters button')
+      .forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    filterMode = b.dataset.f;
+    renderSidebar();
+  });
+});
+
+/* ---------------- vue ticket ---------------- */
+function closeTicketView() {
+  current = null;
+  $('#msgs').innerHTML =
+    '<div class="placeholder">Sélectionne un ticket à gauche.</div>';
+  $('#input').disabled = true;
+  $('#sendBtn').disabled = true;
+  syncHeader();
+  renderSidebar();
+}
+
+/* ---------------- rendu sidebar ---------------- */
+function ticketRow(t) {
+  const el = document.createElement('div');
+  const mine = t.assignee_id && t.assignee_id === myId;
+  const bl = blacklist.has(String(t.user_id));
+  el.className =
+    'tk' +
+    (t.user_id === current ? ' active' : '') +
+    (t.status === 'closed' ? ' closed' : '') +
+    (bl ? ' bl' : '') +
+    (t.assignee_id && !mine ? ' assigned-other' : '');
+  el.innerHTML =
+    `<div class="n"><span>${esc(t.username)}</span>` +
+    `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
+    `<div class="p">${esc(t.last_preview || '')}</div>` +
+    (t.assignee_id
+      ? `<div class="lock">🔒 ${mine ? 'toi' : esc(t.assignee_name || '?')}</div>`
+      : '') +
+    (bl ? `<div class="blmark">🚫 bloqué</div>` : '');
+  el.addEventListener('click', () => openTicket(t.user_id));
+  return el;
+}
+
+function renderSidebar() {
+  let list = [...tickets.values()];
+  if (filterMode === 'open') list = list.filter((t) => t.status !== 'closed');
+  else if (filterMode === 'closed')
+    list = list.filter((t) => t.status === 'closed');
+  if (searchIds) list = list.filter((t) => searchIds.has(t.user_id));
+
+  const box = $('#ticketList');
+  box.innerHTML = '';
+  if (!list.length) {
+    const why = searchIds
+      ? 'Aucun résultat.'
+      : filterMode === 'closed'
+        ? 'Aucun ticket clôturé.'
+        : filterMode === 'open'
+          ? 'Aucun ticket ouvert.'
+          : "Aucun ticket pour l'instant.";
+    box.innerHTML = `<div class="empty">${why}</div>`;
+    updateTitle();
+    return;
+  }
+
+  const order = [NONE, ...categories];
+  const groups = new Map(order.map((k) => [k, []]));
+  for (const t of list) {
+    const key =
+      t.category && categories.includes(t.category) ? t.category : NONE;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+
+  for (const key of groups.keys()) {
+    const items = groups
+      .get(key)
+      .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+    if (!items.length) continue;
+
+    const label = key === NONE ? 'Non trié' : key;
+    const collapsed = collapsedGroups.has(key);
+    const unread = items.reduce((n, t) => n + (t.unread || 0), 0);
+
+    const gh = document.createElement('div');
+    gh.className = 'grp';
+    gh.innerHTML =
+      `<span class="arw">${collapsed ? '▸' : '▾'}</span>${esc(label)}` +
+      `<span class="cnt">${items.length}</span>` +
+      `${unread ? `<span class="gbadge">${unread}</span>` : ''}`;
+    gh.addEventListener('click', () => {
+      if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+      else collapsedGroups.add(key);
+      renderSidebar();
+    });
+    box.appendChild(gh);
+
+    if (collapsed) continue;
+    for (const t of items) box.appendChild(ticketRow(t));
+  }
+  updateTitle();
+}
+
+function buildCatSelect() {
+  const sel = $('#catSelect');
+  sel.innerHTML =
+    `<option value="">— Non trié —</option>` +
+    categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+}
+
+function syncHeader() {
+  const t = current ? tickets.get(current) : null;
+  $('#headName').textContent = t ? t.username : current || '—';
+  $('#headWho').textContent = t ? `ID ${current} · ${t.status}` : '';
+
+  const mine = !!(t && t.assignee_id && t.assignee_id === myId);
+  $('#headAssignee').textContent =
+    t && t.assignee_id ? `🔒 ${mine ? 'toi' : t.assignee_name || '?'}` : '';
+
+  $('#closeBtn').classList.toggle('hidden', !t || t.status === 'closed');
+  $('#reopenBtn').classList.toggle('hidden', !t || t.status !== 'closed');
+
+  const block = $('#blockBtn');
+  const bl = !!(t && blacklist.has(String(t.user_id)));
+  block.classList.toggle('hidden', !t);
+  block.classList.toggle('on', bl);
+  block.textContent = bl ? '✅ Débloquer' : '🚫 Bloquer';
+
+  const take = $('#takeBtn');
+  take.classList.toggle('hidden', !t);
+  take.classList.toggle('mine', mine);
+  take.textContent = mine
+    ? 'Lâcher'
+    : t && t.assignee_id
+      ? 'Reprendre'
+      : 'Prendre';
+
+  const cat = $('#catSelect');
+  cat.classList.toggle('hidden', !t);
+  if (t) {
+    cat.value = categories.includes(t.category) ? t.category : '';
+    cat.classList.toggle('unset', !cat.value);
+  }
+
+  const escSel = $('#escSelect');
+  const showEsc = !!t && maxLvl > 1;
+  escSel.classList.toggle('hidden', !showEsc);
+  if (showEsc) {
+    const cur = t.escalation_level || 1;
+    let html = '';
+    for (let L = 1; L <= maxLvl; L++) {
+      html +=
+        `<option value="${L}"${L === cur ? ' selected' : ''}>` +
+        `${L === cur ? '● ' : ''}${esc(levelName(L))}` +
+        `${L === cur ? ' (actuel)' : ''}</option>`;
+    }
+    escSel.innerHTML = html;
+  }
+}
+
+function openTicket(uid) {
+  current = uid;
+  const t = tickets.get(uid);
+  if (t) t.unread = 0;
+  $('#input').disabled = false;
+  $('#sendBtn').disabled = false;
+  syncHeader();
+  renderSidebar();
+  if (msgCache.has(uid)) renderMessages();
+  else {
+    $('#msgs').innerHTML = '<div class="placeholder">Chargement…</div>';
+    ws.send(JSON.stringify({ type: 'open', userId: uid }));
+  }
+}
+
+$('#catSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'set_category',
+      userId: current,
+      category: e.target.value || null,
+    }),
+  );
+});
+
+$('#takeBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const mine = !!(t && t.assignee_id === myId);
+  ws.send(JSON.stringify({ type: 'assign', userId: current, take: !mine }));
+});
+
+$('#blockBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const on = !blacklist.has(String(current));
+  if (
+    on &&
+    !window.confirm(
+      "Bloquer ce client ? Ses futurs MP au bot seront ignorés (aucun ticket créé).",
+    )
+  )
+    return;
+  ws.send(JSON.stringify({ type: 'blacklist', userId: current, on }));
+});
+
+$('#escSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const cur = (t && t.escalation_level) || 1;
+  const target = parseInt(e.target.value, 10);
+  if (!target || target === cur) return;
+  const up = target > cur;
+  const ok = window.confirm(
+    up
+      ? `Escalader ce ticket vers « ${levelName(target)} » ?\n\n` +
+          `Les staff en dessous de ce niveau perdront l'accès au ticket ` +
+          `(toi aussi si tu n'es pas au moins « ${levelName(target)} »).`
+      : `Redescendre ce ticket vers « ${levelName(target)} » ?`,
+  );
+  if (!ok) {
+    syncHeader();
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'escalate', userId: current, level: target }));
+});
+
+function renderMessages() {
+  const arr = msgCache.get(current) || [];
+  const box = $('#msgs');
+  box.innerHTML = '';
+  if (!arr.length) {
+    box.innerHTML = '<div class="placeholder">Aucun message.</div>';
+    return;
+  }
+  for (const msg of arr) {
+    const el = document.createElement('div');
+    el.className = 'm ' + msg.author;
+    let html =
+      `<div class="meta">${esc(msg.author_name)} · ` +
+      `${new Date(msg.created_at).toLocaleString()}</div>${esc(msg.content)}`;
+    for (const a of msg.attachments || []) {
+      const isImg =
+        (a.contentType || '').startsWith('image/') ||
+        /\.(png|jpe?g|gif|webp)$/i.test(a.url || '');
+      html += isImg
+        ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">` +
+          `<img class="att" src="${esc(a.url)}" alt="${esc(a.name || '')}"></a>`
+        : `<a class="attfile" href="${esc(a.url)}" target="_blank" rel="noopener">` +
+          `📎 ${esc(a.name || 'fichier')}</a>`;
+    }
+    el.innerHTML = html;
+    box.appendChild(el);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------- envoi ---------------- */
+const noteCheck = $('#noteCheck');
+
+function updateNoteMode() {
+  const on = noteCheck.checked;
+  $('#composer').classList.toggle('note-mode', on);
+  $('#input').placeholder = on
+    ? 'Note interne (visible staff uniquement)…'
+    : 'Écris ta réponse au client…';
+  $('#sendBtn').textContent = on ? 'Ajouter' : 'Envoyer';
+}
+noteCheck.addEventListener('change', updateNoteMode);
+
+function send() {
+  const v = $('#input').value.trim();
+  if (!v || !current || !ws || ws.readyState !== 1) return;
+  const type = noteCheck.checked ? 'note' : 'reply';
+  ws.send(JSON.stringify({ type, userId: current, content: v }));
+  $('#input').value = '';
+}
+$('#sendBtn').addEventListener('click', send);
+$('#input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+
+/* ---------------- pièce jointe staff -> client ---------------- */
+$('#attachBtn').addEventListener('click', () => {
+  if (current) $('#fileInput').click();
+});
+$('#fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || !current) return;
+  setStatus(`Envoi de ${file.name}…`);
+  const fd = new FormData();
+  fd.append('userId', current); // AVANT le fichier (champs lus dans l'ordre)
+  fd.append('caption', $('#input').value.trim());
+  fd.append('file', file, file.name);
+  try {
+    const r = await fetch('/api/attach', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: fd,
+    });
+    if (r.ok) {
+      $('#input').value = '';
+      setStatus('Pièce jointe envoyée.');
+    } else {
+      const j = await r.json().catch(() => ({}));
+      setStatus(`Échec envoi pièce jointe (${j.error || r.status}).`);
+    }
+  } catch (err) {
+    setStatus('Échec envoi pièce jointe : ' + (err.message || err));
+  }
+});
+$('#closeBtn').addEventListener('click', () => {
+  if (current) ws.send(JSON.stringify({ type: 'close', userId: current }));
+});
+$('#reopenBtn').addEventListener('click', () => {
+  if (current) ws.send(JSON.stringify({ type: 'reopen', userId: current }));
+});
+
+// se reconnecter quand l'onglet redevient actif si la socket est tombée
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && ws && ws.readyState === 3) connect();
+});

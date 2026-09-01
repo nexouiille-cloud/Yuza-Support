@@ -1,0 +1,7 @@
+node_modules/
+.env
+data.json
+server/vapid.json
+uploads/
+*.log
+dist/

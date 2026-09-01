@@ -1,0 +1,25 @@
+{
+  "name": "yuza-launcher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Yuza Support — bot Discord relais de tickets + interface staff web (DM = ticket)",
+  "scripts": {
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "launcher": "electron launcher/main.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/multipart": "^10.1.1",
+    "@fastify/static": "^10.1.3",
+    "@fastify/websocket": "^11.0.2",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1"
+  }
+}
