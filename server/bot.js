@@ -154,13 +154,29 @@ export async function getStaffMember(userId) {
     config.staffTiers.forEach((tier, i) => {
       if (roleIds.includes(tier.roleId)) level = Math.max(level, i + 2);
     });
-    return { member, isStaff, level };
+    return { member, isStaff, level, roleIds };
   } catch (err) {
     console.error(
       `[auth] getStaffMember échoué (guild=${config.guildId}, user=${userId}) :`,
       err?.message || err,
     );
-    return { member: null, isStaff: false, level: 0 };
+    return { member: null, isStaff: false, level: 0, roleIds: [] };
+  }
+}
+
+// Ping d'un rôle dans le salon d'annonce (demande de rôle sur un ticket).
+export async function pingRoleInChannel(roleId, text) {
+  const channelId = effectiveStaffChannel();
+  if (!channelId || !roleId) return;
+  try {
+    const ch = await bot.channels.fetch(channelId);
+    if (!ch || !ch.isTextBased()) return;
+    await ch.send({
+      content: `<@&${roleId}> ${text}`,
+      allowedMentions: { roles: [roleId] },
+    });
+  } catch (err) {
+    console.error('[bot] ping rôle échoué :', err?.message || err);
   }
 }
 

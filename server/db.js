@@ -66,6 +66,10 @@ export function upsertTicket(userId, username, preview) {
       escalation_level: 1,
       assignee_id: null,
       assignee_name: null,
+      waiting: 'staff',
+      last_client_at: now,
+      last_staff_at: null,
+      requested_role: null,
       created_at: now,
       updated_at: now,
       last_preview: preview ?? '',
@@ -132,18 +136,34 @@ export function setTicketStatus(userId, status) {
 }
 
 export function addMessage(userId, author, authorName, content, attachments = []) {
+  const now = Date.now();
   const msg = {
     id: ++data.seq,
     user_id: userId,
-    author, // 'client' | 'staff' | 'system'
+    author, // 'client' | 'staff' | 'note' | 'system'
     author_name: authorName,
     content,
     attachments: Array.isArray(attachments) ? attachments : [],
-    created_at: Date.now(),
+    created_at: now,
   };
   (data.messages[userId] ||= []).push(msg);
+  // suivi de l'attente (client / staff)
+  const t = data.tickets[userId];
+  if (t) {
+    if (author === 'client') { t.last_client_at = now; t.waiting = 'staff'; }
+    else if (author === 'staff') { t.last_staff_at = now; t.waiting = 'client'; }
+  }
   save();
   return msg;
+}
+
+export function setRequestedRole(userId, obj) {
+  const t = data.tickets[userId];
+  if (t) {
+    t.requested_role = obj || null;
+    t.updated_at = Date.now();
+    save();
+  }
 }
 
 /* ---------------- réglages (surchargent .env / fichiers) ---------------- */
@@ -188,6 +208,18 @@ export function effectiveTheme() {
     accent: /^#[0-9a-fA-F]{6}$/.test(t.accent || '') ? t.accent : '#ff9d00',
     bg: /^#[0-9a-fA-F]{6}$/.test(t.bg || '') ? t.bg : '#0a0a0c',
   };
+}
+export function effectiveAssignRoles() {
+  const a = data.settings.assignRoles;
+  return Array.isArray(a)
+    ? a
+        .map((r) => ({ name: String(r.name || '').slice(0, 40), roleId: String(r.roleId || '').trim() }))
+        .filter((r) => r.name)
+    : [];
+}
+export function effectiveSla() {
+  const n = Number(data.settings.slaMinutes);
+  return Number.isFinite(n) && n > 0 ? n : 15;
 }
 
 /* ---------------- fiche membre ---------------- */

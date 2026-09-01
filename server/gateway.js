@@ -1,6 +1,6 @@
 import { config, levelName, maxLevel } from './config.js';
 import { verifySession } from './auth.js';
-import { getStaffMember, sendDM } from './bot.js';
+import { getStaffMember, sendDM, pingRoleInChannel } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
   listTickets,
@@ -15,6 +15,7 @@ import {
   setTicketEscalation,
   setTicketTitle,
   setTicketPriority,
+  setRequestedRole,
   getStats,
   getBlacklist,
   setBlacklist,
@@ -25,6 +26,8 @@ import {
   getSettings,
   updateSettings,
   effectiveTheme,
+  effectiveAssignRoles,
+  effectiveSla,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -167,11 +170,11 @@ export function registerGateway(app) {
       return;
     }
 
-    const entry = { socket, session, level: 1, ready: false };
+    const entry = { socket, session, level: 1, roleIds: [], ready: false };
     clients.add(entry);
 
     // niveau réel (asynchrone) : rôle + tiers
-    getStaffMember(session.uid).then(({ isStaff, level }) => {
+    getStaffMember(session.uid).then(({ isStaff, level, roleIds }) => {
       if (!isStaff) {
         send(entry, { type: 'kicked', reason: 'role_removed' });
         socket.close();
@@ -179,6 +182,7 @@ export function registerGateway(app) {
         return;
       }
       entry.level = level;
+      entry.roleIds = roleIds || [];
       entry.ready = true;
       send(entry, {
         type: 'hello',
@@ -191,6 +195,9 @@ export function registerGateway(app) {
         blacklist: getBlacklist(),
         vapidPublic: vapidPublicKey(),
         staff: presenceList(),
+        roles: entry.roleIds,
+        assignRoles: effectiveAssignRoles(),
+        slaMinutes: effectiveSla(),
       });
       send(entry, { type: 'categories', categories: effectiveCategories() });
       send(entry, {
@@ -259,6 +266,19 @@ export function registerGateway(app) {
         if (typeof p.staffPingRoleId === 'string') {
           patch.staffPingRoleId = p.staffPingRoleId.trim();
         }
+        if (Array.isArray(p.assignRoles)) {
+          patch.assignRoles = p.assignRoles
+            .map((r) => ({
+              name: String(r.name || '').slice(0, 40),
+              roleId: String(r.roleId || '').trim(),
+            }))
+            .filter((r) => r.name)
+            .slice(0, 30);
+        }
+        if (p.slaMinutes != null) {
+          const n = Number(p.slaMinutes);
+          if (Number.isFinite(n) && n > 0) patch.slaMinutes = Math.round(n);
+        }
         if (p.theme && typeof p.theme === 'object') {
           patch.theme = {
             appName: String(p.theme.appName || '').slice(0, 40) || 'Volt Support',
@@ -272,6 +292,59 @@ export function registerGateway(app) {
         send(entry, { type: 'settings_saved', ok: true });
         broadcastAll({ type: 'categories', categories: effectiveCategories() });
         broadcastAll({ type: 'theme', theme: effectiveTheme() });
+        broadcastAll({
+          type: 'assign_config',
+          assignRoles: effectiveAssignRoles(),
+          slaMinutes: effectiveSla(),
+        });
+        pushTickets();
+        return;
+      }
+
+      /* ---- demander un rôle sur un ticket ---- */
+      if (msg.type === 'request_role') {
+        if (!msg.userId || !canSee(entry, msg.userId)) return;
+        const role = effectiveAssignRoles().find(
+          (r) => r.roleId && r.roleId === String(msg.roleId),
+        );
+        if (!role) return;
+        const t = getTicket(msg.userId);
+        setRequestedRole(msg.userId, {
+          name: role.name,
+          roleId: role.roleId,
+          by: session.name,
+          at: Date.now(),
+        });
+        const label = t?.title || t?.username || 'un client';
+        const sys = addMessage(
+          msg.userId,
+          'system',
+          'Système',
+          `${session.name} demande un « ${role.name} » sur ce ticket`,
+        );
+        broadcastTicket(msg.userId, { type: 'message', message: sys });
+        pushTickets();
+        // alerte ciblée aux staff qui ont ce rôle
+        for (const c of clients) {
+          if (c.ready && c.roleIds.includes(role.roleId)) {
+            send(c, {
+              type: 'role_requested',
+              userId: msg.userId,
+              roleName: role.name,
+              by: session.name,
+              ticketName: label,
+            });
+          }
+        }
+        pingRoleInChannel(
+          role.roleId,
+          `🙋 demandé sur le ticket de **${label}** par **${session.name}**`,
+        );
+        return;
+      }
+      if (msg.type === 'clear_request') {
+        if (!msg.userId || !canSee(entry, msg.userId)) return;
+        setRequestedRole(msg.userId, null);
         pushTickets();
         return;
       }
@@ -336,6 +409,14 @@ export function registerGateway(app) {
         let assigned = false;
         if (t && !t.assignee_id) {
           setTicketAssignee(msg.userId, session.uid, session.name);
+          assigned = true;
+        }
+        // si un rôle était demandé et que je l'ai -> demande satisfaite
+        if (
+          t?.requested_role &&
+          entry.roleIds.includes(t.requested_role.roleId)
+        ) {
+          setRequestedRole(msg.userId, null);
           assigned = true;
         }
         broadcastTicket(msg.userId, { type: 'message', message: stored });
@@ -403,6 +484,14 @@ export function registerGateway(app) {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         if (msg.take) setTicketAssignee(msg.userId, session.uid, session.name);
         else setTicketAssignee(msg.userId, null, null);
+        const at = getTicket(msg.userId);
+        if (
+          msg.take &&
+          at?.requested_role &&
+          entry.roleIds.includes(at.requested_role.roleId)
+        ) {
+          setRequestedRole(msg.userId, null);
+        }
         const sys = addMessage(
           msg.userId,
           'system',
@@ -513,7 +602,7 @@ export function registerGateway(app) {
     async () => {
       let changed = false;
       for (const c of [...clients]) {
-        const { isStaff, level } = await getStaffMember(c.session.uid);
+        const { isStaff, level, roleIds } = await getStaffMember(c.session.uid);
         if (!isStaff) {
           if (c.socket.readyState === 1) {
             send(c, { type: 'kicked', reason: 'role_removed' });
@@ -523,7 +612,10 @@ export function registerGateway(app) {
           changed = true;
           continue;
         }
-        if (level !== c.level) {
+        const rolesChanged =
+          (roleIds || []).join(',') !== c.roleIds.join(',');
+        if (rolesChanged) c.roleIds = roleIds || [];
+        if (level !== c.level || rolesChanged) {
           c.level = level;
           updatePushSubLevel(c.session.uid, level);
           send(c, {
@@ -536,6 +628,9 @@ export function registerGateway(app) {
             maxLevel,
             blacklist: getBlacklist(),
             vapidPublic: vapidPublicKey(),
+            roles: c.roleIds,
+            assignRoles: effectiveAssignRoles(),
+            slaMinutes: effectiveSla(),
           });
           send(c, { type: 'tickets', tickets: visibleTickets(level) });
           changed = true;

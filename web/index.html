@@ -59,6 +59,7 @@
       <section id="viewHome" class="view active">
         <div class="home-hi">Salut <span class="accent" id="hiName">—</span> 👋</div>
         <div class="home-sub">Bienvenue sur le panel support.<span class="lvl" id="hiLevel">—</span></div>
+        <div id="homeReq" class="hidden"></div>
         <div id="presence" class="hidden"></div>
         <input id="memberSearch" type="search" placeholder="🔍  Fiche membre — pseudo ou ID Discord, puis Entrée" autocomplete="off" />
         <div class="cards">
@@ -95,6 +96,7 @@
             <input id="search" type="search" placeholder="Rechercher (nom, message, ID)…" autocomplete="off" />
             <div id="filters">
               <button data-f="open" class="active">Ouverts</button>
+              <button data-f="towait">À traiter</button>
               <button data-f="unassigned">Non assignés</button>
               <button data-f="closed">Clôturés</button>
               <button data-f="all">Tous</button>
@@ -113,6 +115,9 @@
             <span id="headAssignee"></span>
             <span class="sp"></span>
             <button id="staffViewBtn" class="hidden iconbtn" title="Afficher seulement les messages staff">👁 Staff</button>
+            <select id="reqRole" class="hidden" title="Demander un rôle sur ce ticket">
+              <option value="">🙋 Demander…</option>
+            </select>
             <select id="priSelect" class="hidden" title="Priorité du ticket">
               <option value="low">Priorité : basse</option>
               <option value="normal">Priorité : normale</option>
@@ -126,6 +131,7 @@
             <button id="closeBtn" class="hidden">Clôturer</button>
             <button id="reopenBtn" class="hidden">Rouvrir</button>
           </div>
+          <div id="reqBanner" class="hidden"></div>
           <div id="msgs"><div class="m system">Sélectionne un ticket à gauche.</div></div>
           <div id="composer">
             <label id="noteToggle" title="Visible staff uniquement — n'est pas envoyée au client">
@@ -176,6 +182,17 @@
             <label class="setline">Couleur d'accent <input type="color" id="setAccent" /></label>
             <label class="setline">Couleur de fond <input type="color" id="setBg" /></label>
             <p class="muted">L'aperçu s'applique tout de suite ; « Enregistrer » le rend permanent pour tout le monde.</p>
+          </div>
+          <div class="setgrp">
+            <h4>Rôles qu'on peut « demander » sur un ticket</h4>
+            <p class="muted">Ex : <code>Resp Illegal</code>, <code>Resp Légal</code>, <code>Admin</code>… Ajoute le nom maintenant, l'ID Discord du rôle plus tard. Un staff pourra demander ce rôle dans un ticket → les membres du rôle sont alertés.</p>
+            <div id="setRoles"></div>
+            <button id="setRoleAdd" class="linkbtn" type="button">+ Ajouter un rôle</button>
+          </div>
+          <div class="setgrp">
+            <h4>Minuteur SLA</h4>
+            <label class="setline">Alerte si un client attend depuis plus de
+              <input type="number" id="setSla" min="1" max="1440" style="width:80px;flex:0" /> minutes</label>
           </div>
           <div class="setgrp">
             <h4>Rôles staff & niveaux</h4>

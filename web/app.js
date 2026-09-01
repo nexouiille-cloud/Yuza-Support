@@ -21,6 +21,9 @@ const blacklist = new Set();
 let vapidPublic = '';
 let staffOnly = false; // vue "staff seulement" dans la conversation
 let presence = []; // staff en ligne
+let myRoles = []; // mes rôles Discord (IDs)
+let assignRoles = []; // rôles demandables : [{name, roleId}]
+let slaMin = 15; // seuil d'alerte SLA (minutes)
 
 const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
 const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -181,6 +184,19 @@ function renderHome() {
   $('#cOpenHint').textContent = unassigned
     ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
     : 'tout est pris en charge';
+
+  const myReq = [...tickets.values()].filter(
+    (t) => t.requested_role && myRoles.includes(String(t.requested_role.roleId)),
+  );
+  const hr = $('#homeReq');
+  hr.classList.toggle('hidden', !myReq.length);
+  if (myReq.length) {
+    hr.textContent = `🔔 On te demande sur ${myReq.length} ticket${myReq.length > 1 ? 's' : ''} — clique pour voir`;
+    hr.onclick = () => {
+      showView('tickets');
+      openTicket(myReq[0].user_id);
+    };
+  }
 }
 
 /* ---------------- présence staff ---------------- */
@@ -231,6 +247,38 @@ function renderMemberModal(p, query) {
     showView('tickets');
     openTicket(p.user_id);
   });
+}
+
+/* ---------------- demande de rôle sur un ticket ---------------- */
+function buildReqRoleSelect() {
+  const sel = $('#reqRole');
+  if (!sel) return;
+  const usable = assignRoles.filter((r) => r.roleId);
+  sel.innerHTML =
+    `<option value="">🙋 Demander…</option>` +
+    usable.map((r) => `<option value="${esc(r.roleId)}">${esc(r.name)}</option>`).join('');
+}
+
+function renderReqBanner() {
+  const b = $('#reqBanner');
+  const t = current ? tickets.get(current) : null;
+  const rr = t && t.requested_role;
+  if (!rr) { b.classList.add('hidden'); b.innerHTML = ''; return; }
+  const mine = myRoles.includes(String(rr.roleId));
+  b.classList.remove('hidden');
+  b.classList.toggle('small', !mine);
+  if (mine) {
+    b.innerHTML =
+      `<span class="rb-txt">🔔 <strong>${esc(rr.by)}</strong> te demande ici — rôle « ${esc(rr.name)} »</span>` +
+      `<button class="btn-accent" id="rbTake" type="button">Prendre le ticket</button>` +
+      `<button class="linkbtn" id="rbClear" type="button">Retirer</button>`;
+    $('#rbTake').addEventListener('click', () => ws.send(JSON.stringify({ type: 'assign', userId: current, take: true })));
+  } else {
+    b.innerHTML =
+      `<span class="rb-txt">🙋 <strong>${esc(rr.name)}</strong> demandé par ${esc(rr.by)}</span>` +
+      `<button class="linkbtn" id="rbClear" type="button">Retirer</button>`;
+  }
+  $('#rbClear').addEventListener('click', () => ws.send(JSON.stringify({ type: 'clear_request', userId: current })));
 }
 
 /* ---------------- notifications ---------------- */
@@ -357,6 +405,10 @@ function handle(m) {
       blacklist.clear();
       (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
       presence = m.staff || presence;
+      if (Array.isArray(m.roles)) myRoles = m.roles.map(String);
+      if (Array.isArray(m.assignRoles)) assignRoles = m.assignRoles;
+      if (m.slaMinutes) slaMin = m.slaMinutes;
+      buildReqRoleSelect();
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
       setConn('ok');
@@ -381,6 +433,34 @@ function handle(m) {
     case 'theme':
       applyTheme(m.theme);
       break;
+
+    case 'assign_config':
+      assignRoles = Array.isArray(m.assignRoles) ? m.assignRoles : [];
+      slaMin = m.slaMinutes || slaMin;
+      buildReqRoleSelect();
+      if (current) syncHeader();
+      break;
+
+    case 'role_requested': {
+      setStatus(`🔔 ${m.by} te demande sur « ${m.ticketName} » (${m.roleName})`);
+      const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+      if (row) row.classList.add('flash');
+      if (m.userId === current) renderReqBanner();
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const n = new Notification('🔔 On te demande sur un ticket', {
+            body: `${m.by} — ${m.ticketName} (${m.roleName})`,
+          });
+          n.onclick = () => {
+            window.focus();
+            showView('tickets');
+            openTicket(m.userId);
+          };
+        }
+      } catch {}
+      renderHome();
+      break;
+    }
 
     case 'settings_meta':
       $('#settingsNav').classList.toggle('hidden', !m.canEditSettings);
@@ -598,14 +678,29 @@ function ticketRow(t) {
     (t.status === 'closed' ? ' closed' : '') +
     (bl ? ' bl' : '') +
     (t.assignee_id && !mine ? ' assigned-other' : '');
+  const reqMine = t.requested_role && myRoles.includes(String(t.requested_role.roleId));
+  if (reqMine) el.className += ' req-mine';
   el.dataset.uid = t.user_id;
   const pri = t.priority && t.priority !== 'normal'
     ? `<span class="pri ${t.priority}"></span>`
     : '';
+  const tags = [];
+  if (t.status !== 'closed') {
+    if (t.waiting === 'staff') {
+      const mn = Math.max(0, Math.round((Date.now() - (t.last_client_at || Date.now())) / 60000));
+      tags.push(`<span class="sla${mn > slaMin ? ' late' : ''}">⏱ ${mn}m</span>`);
+    } else if (t.waiting === 'client') {
+      tags.push(`<span class="wait">attente client</span>`);
+    }
+  }
+  if (t.requested_role) {
+    tags.push(`<span class="req">🙋 ${esc(t.requested_role.name)}${reqMine ? ' (toi)' : ''}</span>`);
+  }
   el.innerHTML =
     `<div class="n"><span>${pri}${esc(ticketLabel(t))}</span>` +
     `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
     `<div class="p">${esc(t.last_preview || '')}</div>` +
+    (tags.length ? `<div class="tags">${tags.join('')}</div>` : '') +
     (t.assignee_id
       ? `<div class="lock">🔒 ${mine ? 'toi' : esc(t.assignee_name || '?')}</div>`
       : '') +
@@ -621,6 +716,8 @@ function renderSidebar() {
     list = list.filter((t) => t.status === 'closed');
   else if (filterMode === 'unassigned')
     list = list.filter((t) => t.status !== 'closed' && !t.assignee_id);
+  else if (filterMode === 'towait')
+    list = list.filter((t) => t.status !== 'closed' && t.waiting === 'staff');
   if (searchIds) list = list.filter((t) => searchIds.has(t.user_id));
 
   const box = $('#ticketList');
@@ -632,9 +729,11 @@ function renderSidebar() {
         ? 'Aucun ticket clôturé.'
         : filterMode === 'unassigned'
           ? 'Aucun ticket non assigné.'
-          : filterMode === 'open'
-            ? 'Aucun ticket ouvert.'
-            : "Aucun ticket pour l'instant.";
+          : filterMode === 'towait'
+            ? 'Rien à traiter — tout est en attente client.'
+            : filterMode === 'open'
+              ? 'Aucun ticket ouvert.'
+              : "Aucun ticket pour l'instant.";
     box.innerHTML = `<div class="empty">${why}</div>`;
     updateTitle();
     return;
@@ -698,6 +797,8 @@ function syncHeader() {
   $('#transcriptBtn').classList.toggle('hidden', !t);
   $('#staffViewBtn').classList.toggle('hidden', !t);
   $('#staffViewBtn').classList.toggle('on', staffOnly);
+  $('#reqRole').classList.toggle('hidden', !(t && assignRoles.some((r) => r.roleId)));
+  renderReqBanner();
 
   const pri = $('#priSelect');
   pri.classList.toggle('hidden', !t);
@@ -796,6 +897,22 @@ $('#priSelect').addEventListener('change', (e) => {
   );
 });
 
+$('#reqRole').addEventListener('change', (e) => {
+  const roleId = e.target.value;
+  e.target.value = '';
+  if (roleId && current && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'request_role', userId: current, roleId }));
+    setStatus('Rôle demandé — les membres du rôle sont alertés.');
+  }
+});
+
+// rafraîchit les minuteurs SLA
+setInterval(() => {
+  if ($('#app').classList.contains('on') && $('#viewTickets').classList.contains('active')) {
+    renderSidebar();
+  }
+}, 30000);
+
 /* fiche membre + transcript */
 $('#ficheBtn').addEventListener('click', () => {
   if (current && ws && ws.readyState === 1) {
@@ -840,7 +957,36 @@ function fillSettings(s, canEdit) {
   $('#setAppName').value = th.appName || appName;
   $('#setAccent').value = th.accent || '#ff9d00';
   $('#setBg').value = th.bg || '#0a0a0c';
+  renderSetRoles(s.assignRoles || assignRoles || []);
+  $('#setSla').value = s.slaMinutes || slaMin;
 }
+
+function roleRow(name, rid) {
+  const d = document.createElement('div');
+  d.className = 'setrole';
+  d.innerHTML =
+    `<input class="nm" placeholder="Nom (ex : Resp Illegal)" value="${esc(name || '')}" />` +
+    `<input class="rid" placeholder="ID du rôle Discord (plus tard)" value="${esc(rid || '')}" />` +
+    `<button class="rm linkbtn" type="button">✕</button>`;
+  d.querySelector('.rm').addEventListener('click', () => d.remove());
+  return d;
+}
+function renderSetRoles(rows) {
+  const box = $('#setRoles');
+  box.innerHTML = '';
+  (rows.length ? rows : [{}]).forEach((r) => box.appendChild(roleRow(r.name, r.roleId)));
+}
+function gatherSetRoles() {
+  return [...$('#setRoles').querySelectorAll('.setrole')]
+    .map((d) => ({
+      name: d.querySelector('.nm').value.trim(),
+      roleId: d.querySelector('.rid').value.trim(),
+    }))
+    .filter((r) => r.name);
+}
+$('#setRoleAdd').addEventListener('click', () =>
+  $('#setRoles').appendChild(roleRow('', '')),
+);
 function livePreview() {
   applyTheme({
     appName: $('#setAppName').value.trim() || 'Volt Support',
@@ -865,6 +1011,8 @@ $('#setSave').addEventListener('click', () => {
         welcome: { text: $('#setWelcome').value, enabled: $('#setWelcomeOn').checked },
         staffChannelId: $('#setChan').value.trim(),
         staffPingRoleId: $('#setPing').value.trim(),
+        assignRoles: gatherSetRoles(),
+        slaMinutes: Number($('#setSla').value) || 15,
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
           accent: $('#setAccent').value,

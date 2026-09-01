@@ -53,7 +53,9 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Présence staff** | qui est en ligne — chips sur l'accueil + onglet **👥 Équipe** (liste nom/rôle) + compteur dans la barre de statut, temps réel |
 | **Fiche membre** | recherche pseudo/ID sur l'accueil (ou bouton 👤 dans un ticket) → profil : 1er contact, nb messages, staff ayant répondu, statut, blacklist… |
 | **Transcript** | bouton ⬇ dans un ticket → télécharge la conversation en fichier HTML autonome |
-| **Réglages** | onglet ⚙️ (visible au niveau le plus élevé) : éditer catégories, message d'accueil, salon d'annonce, **Apparence** (nom affiché, couleur d'accent + fond, aperçu live) — sans toucher aux fichiers. Stocké dans `data.json`, surcharge `.env` / `*.json`. |
+| **Réglages** | onglet ⚙️ (niveau le plus élevé) : catégories, message d'accueil, salon d'annonce, **rôles demandables** (nom + ID), **seuil SLA**, **Apparence** (nom, accent + fond, aperçu live). Stocké dans `data.json`, surcharge `.env` / `*.json`. |
+| **Demande de rôle** | dans un ticket, menu 🙋 « Demander… » → choisis un rôle (configuré dans Réglages). Les staff qui ont ce rôle Discord reçoivent : une **grosse bannière** sur le ticket, une notif, un ping dans le salon d'annonce, et une alerte sur l'accueil. Satisfait dès qu'un membre du rôle prend/répond. |
+| **Statut d'attente** | chaque ticket affiche s'il attend le **staff** (⏱ minuteur SLA, rouge au-delà du seuil) ou le **client** ; filtre « À traiter ». |
 
 **Non modifiables depuis le site** (dans les variables d'hébergement) : `BOT_TOKEN`,
 `STAFF_ROLE_IDS`, `STAFF_TIERS`, `GUILD_ID`, `OAUTH_REDIRECT_URI`.

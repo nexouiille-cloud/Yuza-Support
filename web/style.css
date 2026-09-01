@@ -156,6 +156,12 @@ button:disabled { opacity: 0.45; cursor: default; }
   background: rgba(255, 157, 0, 0.12); color: var(--accent-bright); font-size: 12px;
   border: 1px solid rgba(255, 157, 0, 0.25);
 }
+#homeReq {
+  max-width: 1000px; margin-bottom: 16px; padding: 12px 16px; border-radius: 12px; cursor: pointer;
+  background: linear-gradient(180deg, rgba(255,157,0,.2), rgba(255,157,0,.08));
+  border: 1px solid rgba(255,157,0,.5); font-weight: 600;
+  animation: reqpulse 2s ease-in-out infinite;
+}
 #presence { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; max-width: 1000px; cursor: pointer; }
 #presence .who-chip {
   display: flex; align-items: center; gap: 6px; background: var(--surface-2);
@@ -273,6 +279,24 @@ button:disabled { opacity: 0.45; cursor: default; }
 .tk .pri.urgent { background: #ff5f5f; box-shadow: 0 0 7px #ff5f5faa; animation: prip 1.4s ease-in-out infinite; }
 @keyframes prip { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 .tk .pri.low { background: #5a6b7a; }
+.tk .tags { display: flex; gap: 6px; margin-top: 3px; flex-wrap: wrap; }
+.tk .wait { font-size: 10px; color: var(--text-faint); }
+.tk .sla { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.tk .sla.late { color: var(--danger); font-weight: 700; }
+.tk .req { font-size: 10px; color: var(--accent-bright); }
+.tk.req-mine { border-left: 3px solid var(--accent); }
+.tk.req-mine::before { transform: scaleY(1); animation: prip 1.4s ease-in-out infinite; }
+
+#reqBanner {
+  flex-shrink: 0; margin: 10px 14px 0; padding: 12px 16px; border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255,157,0,.22), rgba(255,157,0,.10));
+  border: 1px solid rgba(255,157,0,.5); display: flex; align-items: center; gap: 12px;
+  animation: reqpulse 2s ease-in-out infinite;
+}
+@keyframes reqpulse { 0%,100% { box-shadow: 0 0 0 0 var(--glow-soft); } 50% { box-shadow: 0 0 22px -4px var(--glow); } }
+#reqBanner.small { animation: none; background: var(--surface-2); border-color: var(--border); color: var(--text-dim); font-size: 13px; }
+#reqBanner .rb-txt { flex: 1; }
+#reqBanner .rb-txt strong { color: var(--accent-bright); }
 #takeBtn.mine { background: rgba(67, 209, 98, 0.16); border-color: rgba(67, 209, 98, 0.4); color: var(--ok); }
 #blockBtn.on { background: rgba(255, 95, 95, 0.16); border-color: rgba(255, 95, 95, 0.4); color: var(--danger); }
 
@@ -323,6 +347,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 .setline input[type="checkbox"] { width: 16px; height: 16px; }
 .set-actions { display: flex; align-items: center; gap: 14px; padding-top: 4px; }
 #setBody.locked { opacity: .55; pointer-events: none; }
+#setRoles { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.setrole { display: flex; gap: 8px; align-items: center; }
+.setrole input { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 11px; border-radius: 8px; font: inherit; }
+.setrole .nm { flex: 1; }
+.setrole .rid { flex: 1.4; }
+.setrole .rm { flex: 0; padding: 6px 10px; }
 #staffList { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
 .staff-item {
   display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, var(--surface-2), var(--surface));
