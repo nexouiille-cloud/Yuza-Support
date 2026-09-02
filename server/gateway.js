@@ -6,6 +6,8 @@ import {
   pingRoleInChannel,
   searchMembers,
   sendConvocation,
+  publishSupportPanel,
+  sendRatingRequest,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -351,6 +353,17 @@ export function registerGateway(app) {
             bg: /^#[0-9a-fA-F]{6}$/.test(p.theme.bg || '') ? p.theme.bg : '#0a0a0c',
           };
         }
+        if (p.panel && typeof p.panel === 'object') {
+          const cur = getSettings().panel || {};
+          patch.panel = {
+            title: String(p.panel.title ?? cur.title ?? '').slice(0, 200),
+            description: String(p.panel.description ?? cur.description ?? '').slice(0, 1500),
+            buttonLabel: String(p.panel.buttonLabel ?? cur.buttonLabel ?? '').slice(0, 70),
+            channelId: String(p.panel.channelId ?? cur.channelId ?? '').trim(),
+            messageId: String(cur.messageId || ''), // conservé, géré par publish_panel
+          };
+        }
+        if (typeof p.askRating === 'boolean') patch.askRating = p.askRating;
         updateSettings(patch);
         send(entry, { type: 'settings_saved', ok: true });
         broadcastAll({ type: 'categories', categories: effectiveCategories() });
@@ -361,6 +374,21 @@ export function registerGateway(app) {
           slaMinutes: effectiveSla(),
         });
         pushTickets();
+        return;
+      }
+
+      /* ---- publier le panneau « Contacter le support » ---- */
+      if (msg.type === 'publish_panel') {
+        if (!entry.isOwner) {
+          send(entry, { type: 'panel_published', ok: false, error: 'forbidden' });
+          return;
+        }
+        try {
+          const r = await publishSupportPanel();
+          send(entry, { type: 'panel_published', ok: true, ...r });
+        } catch (e) {
+          send(entry, { type: 'panel_published', ok: false, error: String(e?.message || e) });
+        }
         return;
       }
 
@@ -725,6 +753,7 @@ export function registerGateway(app) {
             const sys = addMessage(msg.userId, 'system', 'Message auto', text);
             broadcastTicket(msg.userId, { type: 'message', message: sys });
           }
+          sendRatingRequest(msg.userId).catch(() => {});
         }
         pushTickets();
         return;
@@ -810,6 +839,7 @@ export function registerGateway(app) {
           'Ce ticket a été fermé automatiquement faute de réponse. Écris-nous à nouveau si besoin.',
         );
       } catch {}
+      sendRatingRequest(t.user_id).catch(() => {});
       const sys = addMessage(
         t.user_id,
         'system',

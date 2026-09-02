@@ -660,6 +660,16 @@ function handle(m) {
       break;
     }
 
+    case 'panel_published':
+      $('#panelStatus').textContent = m.ok
+        ? m.edited
+          ? '✓ panneau mis à jour dans Discord'
+          : '✓ panneau publié dans Discord'
+        : m.error === 'forbidden'
+          ? 'réservé à l\'owner'
+          : `échec : ${m.error || '?'}`;
+      break;
+
     case 'assign_config':
       assignRoles = Array.isArray(m.assignRoles) ? m.assignRoles : [];
       slaMin = m.slaMinutes || slaMin;
@@ -853,11 +863,18 @@ function renderStats(s) {
     ? wl.map(([k, v]) => rowBar(k, v, wlMax)).join('')
     : '<div class="muted">Aucun ticket en cours assigné.</div>';
 
+  const rbs = Object.entries(s.ratingByStaff || {}).sort((a, b) => b[1].avg - a[1].avg);
+  const rbsRows = rbs.length
+    ? rbs.map(([k, v]) => rowBar(`${k} (${v.n} avis)`, v.avg, 5)).join('')
+    : '<div class="muted">Aucune note pour l\'instant.</div>';
+
   $('#statsBody').innerHTML =
     `<div class="kpis">${kpi('Total', s.total)}${kpi('Ouverts', s.open)}` +
     `${kpi('Clôturés', s.closed)}${kpi('Non assignés', s.unassigned)}` +
-    `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}</div>` +
+    `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}` +
+    `${kpi('Satisfaction', s.avgRating != null ? s.avgRating + '/5' : '—')}</div>` +
     `<h4>Charge actuelle par staff (tickets ouverts assignés)</h4>${wlRows}` +
+    `<h4>Satisfaction par staff — moyenne ${s.avgRating != null ? s.avgRating + '/5' : '—'} sur ${s.ratingCount || 0} avis</h4>${rbsRows}` +
     `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
     `<h4>Par catégorie</h4>${catRows}` +
     `<h4>Réponses par staff (total)</h4>${staffRows}`;
@@ -906,6 +923,7 @@ $('#advPriority').addEventListener('change', (e) => {
 /* ---------------- vue ticket ---------------- */
 function closeTicketView() {
   current = null;
+  $('#viewTickets').classList.remove('show-convo');
   $('#msgs').innerHTML =
     '<div class="m system">Sélectionne un ticket à gauche.</div>';
   $('#input').disabled = true;
@@ -913,6 +931,9 @@ function closeTicketView() {
   syncHeader();
   renderSidebar();
 }
+$('#backToList').addEventListener('click', () =>
+  $('#viewTickets').classList.remove('show-convo'),
+);
 
 /* ---------------- rendu sidebar ---------------- */
 function ticketRow(t) {
@@ -1045,6 +1066,7 @@ function syncHeader() {
   $('#headWho').textContent = t
     ? `${t.username} · ID ${current} · ${t.status}`
     : '';
+  $('#backToList').classList.toggle('hidden', !t);
   $('#renameBtn').classList.toggle('hidden', !t);
   $('#ficheBtn').classList.toggle('hidden', !t);
   $('#transcriptBtn').classList.toggle('hidden', !t);
@@ -1112,6 +1134,7 @@ function openTicket(uid) {
   if (t) t.unread = 0;
   $('#input').disabled = false;
   $('#sendBtn').disabled = false;
+  $('#viewTickets').classList.add('show-convo'); // mobile : bascule vers la conversation
   syncHeader();
   renderSidebar();
   if (msgCache.has(uid)) renderMessages();
@@ -1229,6 +1252,13 @@ function fillSettings(s, scope) {
   $('#setFlCount').value = fl.count || 8;
   $('#setFlWin').value = fl.windowSec || 15;
   $('#setFlMute').value = fl.muteMin || 10;
+  const pn = s.panel || {};
+  $('#panelChan').value = pn.channelId || '';
+  $('#panelTitle').value = pn.title || '';
+  $('#panelBtn').value = pn.buttonLabel || '';
+  $('#panelDesc').value = pn.description || '';
+  $('#panelStatus').textContent = pn.messageId ? 'panneau publié' : '';
+  $('#setRateOn').checked = s.askRating !== false;
 }
 
 function roleRow(name, rid) {
@@ -1297,6 +1327,13 @@ $('#setSave').addEventListener('click', () => {
           windowSec: Number($('#setFlWin').value) || 15,
           muteMin: Number($('#setFlMute').value) || 10,
         },
+        panel: {
+          channelId: $('#panelChan').value.trim(),
+          title: $('#panelTitle').value.trim(),
+          buttonLabel: $('#panelBtn').value.trim(),
+          description: $('#panelDesc').value.trim(),
+        },
+        askRating: $('#setRateOn').checked,
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
           accent: $('#setAccent').value,
@@ -1309,6 +1346,13 @@ $('#setSave').addEventListener('click', () => {
 });
 $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
+});
+$('#panelPublish').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  // on enregistre d'abord le contenu du panneau, puis on publie
+  $('#setSave').click();
+  $('#panelStatus').textContent = 'publication…';
+  ws.send(JSON.stringify({ type: 'publish_panel' }));
 });
 
 /* ---------------- mon apparence (perso, visible par moi seul) ---------------- */

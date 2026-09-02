@@ -189,6 +189,8 @@ export function getSettings() {
     askCategory: data.settings.askCategory !== false,
     autoClose: effectiveAutoClose(),
     flood: effectiveFlood(),
+    panel: effectivePanel(),
+    askRating: data.settings.askRating !== false,
   };
 }
 export function updateSettings(patch) {
@@ -268,6 +270,42 @@ export function effectiveFlood() {
 export function markAutoWarned(userId) {
   const t = data.tickets[userId];
   if (t) { t.auto_warned = true; save(); }
+}
+
+/* ---------------- panneau « Contacter le support » ---------------- */
+export function effectivePanel() {
+  const p = data.settings.panel || {};
+  return {
+    title: (p.title || "Besoin d'aide ?").slice(0, 200),
+    description: (
+      p.description ||
+      'Clique sur le bouton ci-dessous pour ouvrir un ticket. Un membre du staff te répondra en message privé.'
+    ).slice(0, 1500),
+    buttonLabel: (p.buttonLabel || '🎫 Ouvrir un ticket').slice(0, 70),
+    channelId: String(p.channelId || '').trim(),
+    messageId: String(p.messageId || '').trim(),
+  };
+}
+export function setPanelMessageId(id) {
+  data.settings.panel = { ...(data.settings.panel || {}), messageId: id ? String(id) : '' };
+  save();
+}
+
+/* ---------------- note de satisfaction ---------------- */
+export function effectiveAskRating() {
+  return data.settings.askRating !== false; // défaut : oui
+}
+export function setTicketRating(userId, rating) {
+  const t = data.tickets[userId];
+  if (!t) return null;
+  const n = Math.max(1, Math.min(5, rating | 0));
+  if (!n) return null;
+  t.rating = n;
+  t.rated_staff = t.assignee_name || null;
+  t.rated_at = Date.now();
+  t.updated_at = Date.now();
+  save();
+  return t;
 }
 // tickets ouverts en attente client, dernière réponse staff plus vieille que `hours`
 export function staleTickets(hours) {
@@ -456,6 +494,21 @@ export function getStats(maxLevel = Infinity) {
     if (idx.has(key)) perDay[idx.get(key)].count++;
   }
 
+  let ratingSum = 0;
+  let ratingN = 0;
+  const ratingStaff = {}; // name -> { sum, n }
+  for (const t of tk) {
+    if (!t.rating) continue;
+    ratingSum += t.rating;
+    ratingN++;
+    const s = t.rated_staff;
+    if (s) {
+      (ratingStaff[s] ||= { sum: 0, n: 0 });
+      ratingStaff[s].sum += t.rating;
+      ratingStaff[s].n++;
+    }
+  }
+
   let respSum = 0;
   let respN = 0;
   const byStaff = {};
@@ -489,6 +542,14 @@ export function getStats(maxLevel = Infinity) {
     byStaff,
     perDay,
     workload: workload(),
+    avgRating: ratingN ? Math.round((ratingSum / ratingN) * 10) / 10 : null,
+    ratingCount: ratingN,
+    ratingByStaff: Object.fromEntries(
+      Object.entries(ratingStaff).map(([k, v]) => [
+        k,
+        { avg: Math.round((v.sum / v.n) * 10) / 10, n: v.n },
+      ]),
+    ),
   };
 }
 

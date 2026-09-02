@@ -133,6 +133,7 @@
 
         <div id="main">
           <div id="head">
+            <button id="backToList" class="hidden iconbtn" title="Retour à la liste">←</button>
             <strong id="headName">—</strong>
             <button id="renameBtn" class="hidden iconbtn" title="Renommer le ticket">✏️</button>
             <button id="ficheBtn" class="hidden iconbtn" title="Fiche du membre">👤</button>
@@ -266,6 +267,22 @@
             <div class="setgrp">
               <h4>Menu catégorie au 1er message</h4>
               <label class="setline"><input type="checkbox" id="setAsk" /> Envoyer des boutons de catégorie au client dès l'ouverture du ticket</label>
+            </div>
+            <div class="setgrp">
+              <h4>Panneau « Contacter le support »</h4>
+              <p class="muted">Un message Discord avec un bouton : le client clique → le bot lui écrit en MP et le ticket se crée à sa 1re réponse.</p>
+              <label class="setline">Salon <input type="text" id="panelChan" placeholder="ID du salon Discord" /></label>
+              <label class="setline">Titre <input type="text" id="panelTitle" maxlength="200" /></label>
+              <label class="setline">Texte du bouton <input type="text" id="panelBtn" maxlength="70" /></label>
+              <textarea id="panelDesc" rows="3" spellcheck="false" placeholder="Description affichée dans le message"></textarea>
+              <div class="setline" style="gap:14px">
+                <button id="panelPublish" class="btn-accent" type="button">Publier / mettre à jour le panneau</button>
+                <span id="panelStatus" class="who"></span>
+              </div>
+            </div>
+            <div class="setgrp">
+              <h4>Note de satisfaction</h4>
+              <label class="setline"><input type="checkbox" id="setRateOn" /> Demander au client une note de 1 à 5 après la clôture d'un ticket</label>
             </div>
             <div class="setgrp">
               <h4>Fermeture automatique des tickets inactifs</h4>

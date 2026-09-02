@@ -6,6 +6,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder,
 } from 'discord.js';
 import { config } from './config.js';
 import {
@@ -18,6 +19,10 @@ import {
   effectiveCategories,
   effectiveAskCategory,
   effectiveFlood,
+  effectivePanel,
+  setPanelMessageId,
+  effectiveAskRating,
+  setTicketRating,
   setTicketCategory,
   getTicket,
 } from './db.js';
@@ -224,28 +229,128 @@ async function askCategory(userId) {
   }
 }
 
-// Clic sur un bouton de catégorie.
+// Clics sur les boutons : panneau support, note de satisfaction, catégorie.
 bot.on(Events.InteractionCreate, async (interaction) => {
   try {
-    if (!interaction.isButton() || !interaction.customId.startsWith('cat:')) return;
-    const cat = interaction.customId.slice(4);
+    if (!interaction.isButton()) return;
+    const id = interaction.customId;
     const uid = interaction.user.id;
-    if (!getTicket(uid) || !effectiveCategories().includes(cat)) {
-      await interaction.reply({ content: 'Catégorie indisponible.', ephemeral: true });
+
+    // --- bouton « Ouvrir un ticket » du panneau ---
+    if (id === 'open_ticket') {
+      if (isBlacklisted(uid)) {
+        await interaction.reply({ content: 'Tu ne peux pas ouvrir de ticket.', ephemeral: true });
+        return;
+      }
+      try {
+        await interaction.user.send(
+          '👋 Décris ton problème ici, en message privé — un membre du staff te répondra dès que possible.',
+        );
+        await interaction.reply({
+          content: '📩 Regarde tes messages privés : écris-nous ta demande là-bas.',
+          ephemeral: true,
+        });
+      } catch {
+        await interaction.reply({
+          content:
+            "⚠ Je n'arrive pas à t'envoyer de MP. Autorise les messages privés des membres du serveur (Paramètres → Confidentialité), puis réessaie.",
+          ephemeral: true,
+        });
+      }
       return;
     }
-    setTicketCategory(uid, cat);
-    const sys = addMessage(uid, 'system', 'Système', `Catégorie choisie par le client : ${cat}`);
-    onSystemMessage(sys);
-    onTicketUpdate(uid);
-    await interaction.update({
-      content: `✅ Catégorie : **${cat}**. Un membre du staff va te répondre.`,
-      components: [],
-    });
+
+    // --- note de satisfaction (1 à 5) ---
+    if (id.startsWith('rate:')) {
+      const n = parseInt(id.slice(5), 10);
+      if (!getTicket(uid) || !(n >= 1 && n <= 5)) {
+        await interaction.reply({ content: "Ce retour n'est plus disponible.", ephemeral: true });
+        return;
+      }
+      setTicketRating(uid, n);
+      const sys = addMessage(uid, 'system', 'Système', `⭐ Le client a noté le support : ${n}/5`);
+      onSystemMessage(sys);
+      onTicketUpdate(uid);
+      await interaction.update({
+        content: `Merci pour ton retour ! (${'★'.repeat(n)}${'☆'.repeat(5 - n)})`,
+        components: [],
+      });
+      return;
+    }
+
+    // --- bouton de catégorie ---
+    if (id.startsWith('cat:')) {
+      const cat = id.slice(4);
+      if (!getTicket(uid) || !effectiveCategories().includes(cat)) {
+        await interaction.reply({ content: 'Catégorie indisponible.', ephemeral: true });
+        return;
+      }
+      setTicketCategory(uid, cat);
+      const sys = addMessage(uid, 'system', 'Système', `Catégorie choisie par le client : ${cat}`);
+      onSystemMessage(sys);
+      onTicketUpdate(uid);
+      await interaction.update({
+        content: `✅ Catégorie : **${cat}**. Un membre du staff va te répondre.`,
+        components: [],
+      });
+      return;
+    }
   } catch (err) {
-    console.error('[bot] interaction catégorie échouée :', err?.message || err);
+    console.error('[bot] interaction bouton échouée :', err?.message || err);
   }
 });
+
+// Publie (ou met à jour) le panneau « Contacter le support » dans son salon.
+export async function publishSupportPanel() {
+  const p = effectivePanel();
+  if (!p.channelId) throw new Error('salon non configuré');
+  const ch = await bot.channels.fetch(p.channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon introuvable');
+  const embed = new EmbedBuilder()
+    .setTitle(p.title)
+    .setDescription(p.description)
+    .setColor(0xff9d00);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('open_ticket')
+      .setLabel(p.buttonLabel)
+      .setStyle(ButtonStyle.Primary),
+  );
+  if (p.messageId) {
+    try {
+      const m = await ch.messages.fetch(p.messageId);
+      await m.edit({ embeds: [embed], components: [row] });
+      return { edited: true, messageId: m.id };
+    } catch {
+      /* message supprimé : on en poste un nouveau */
+    }
+  }
+  const m = await ch.send({ embeds: [embed], components: [row] });
+  setPanelMessageId(m.id);
+  return { edited: false, messageId: m.id };
+}
+
+// Envoie au client les boutons de note de satisfaction (après clôture).
+export async function sendRatingRequest(userId) {
+  if (!effectiveAskRating()) return;
+  try {
+    const row = new ActionRowBuilder().addComponents(
+      [1, 2, 3, 4, 5].map((n) =>
+        new ButtonBuilder()
+          .setCustomId('rate:' + n)
+          .setLabel(String(n))
+          .setStyle(ButtonStyle.Secondary),
+      ),
+    );
+    await sendDM(userId, {
+      content:
+        "Comment évaluerais-tu l'aide reçue ? (1 = pas satisfait · 5 = très satisfait)",
+      components: [row],
+    });
+  } catch (err) {
+    console.error('[bot] demande de note échouée :', err?.message || err);
+  }
+}
 
 // Réponse automatique à l'ouverture / relance d'un ticket.
 async function sendWelcome(userId, username) {

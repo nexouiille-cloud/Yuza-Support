@@ -454,15 +454,74 @@ button:disabled { opacity: 0.45; cursor: default; }
 :root[data-appearance="clair"] #filters button.active { color: var(--accent-deep); }
 :root[data-appearance="clair"] .navbtn.active::before { background: var(--accent-deep); }
 
-/* ---------- responsive ---------- */
+/* bouton « retour à la liste » : mobile uniquement */
+#backToList { display: none; }
+
+/* ---------- responsive / téléphone ---------- */
 @media (max-width: 760px) {
+  /* nav en barre du bas, pouce-friendly */
   #app.on { flex-direction: column-reverse; }
-  #rail { width: 100%; flex-direction: row; border-right: 0; border-top: 1px solid var(--border); padding: 6px; }
+  #rail {
+    width: 100%; flex-direction: row; justify-content: space-around; align-items: center;
+    border-right: 0; border-top: 1px solid var(--border);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    gap: 2px;
+  }
   #rail .logo, #rail .spacer { display: none; }
+  .navbtn { width: 46px; height: 46px; font-size: 21px; }
   .navbtn .tip { display: none; }
-  #viewTickets { flex-direction: column; }
-  #sidebar { width: 100%; height: 42%; border-right: 0; border-bottom: 1px solid var(--border); }
+  .navbtn.active::before { display: none; }
+
+  /* vues plein écran, marges resserrées */
+  #viewHome { padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest { padding: 22px 14px; }
+  .home-hi { font-size: 22px; }
+  .cards { grid-template-columns: 1fr; gap: 12px; }
+  .card { min-height: 96px; padding: 16px; }
+  #setBody { max-width: none; }
+
+  /* tickets : liste OU conversation (master / detail) */
+  #viewTickets { flex-direction: column; position: relative; }
+  #sidebar {
+    width: 100%; flex: 1; height: auto;
+    border-right: 0; border-bottom: 0;
+  }
+  #main { display: none; }
+  #viewTickets.show-convo #sidebar { display: none; }
+  #viewTickets.show-convo #main { display: flex; }
+  #backToList:not(.hidden) { display: grid; }
+
+  /* en-tête d'un ticket : boutons qui débordent -> on scrolle */
+  #head { gap: 8px; padding: 10px 12px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #head > * { flex-shrink: 0; }
+  #head #headName { font-size: 15px; }
+  #headWho { display: none; }
+  #catSelect, #escSelect, #priSelect { max-width: 150px; }
+
+  /* filtres de la liste : on laisse passer à la ligne */
+  #filters { flex-wrap: wrap; }
+  #filters button { flex: 1 1 30%; padding: 8px 0; font-size: 11px; }
+
+  /* cibles tactiles plus grandes */
+  button, select, .setline input[type="text"], #search, #input, #dmText, #sugText, .setgrp textarea {
+    min-height: 42px;
+  }
+  #filters button { min-height: 36px; }
+  .iconbtn { min-height: 38px; }
+
   .m { max-width: 88%; }
+  #composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); gap: 7px; flex-wrap: wrap; }
+  #composer input#input { flex: 1 1 100%; order: 3; }
+  #noteToggle { order: 1; }
+  #attachBtn { order: 2; }
+  #sendBtn { order: 4; flex: 1; }
+
+  /* barre de statut compacte */
+  #status { font-size: 11px; padding: 4px 12px; }
+  #statusPresence { display: none; }
+
+  .srow .sl { width: 96px; }
+  .stats-head h2 { font-size: 19px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
