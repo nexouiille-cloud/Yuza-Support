@@ -43,36 +43,114 @@ function setStatus(s) { $('#statusText').textContent = s; }
 /* ---------------- thème ---------------- */
 function lighten(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, (n >> 16) + amt);
-  const g = Math.min(255, ((n >> 8) & 255) + amt);
-  const b = Math.min(255, (n & 255) + amt);
+  const r = Math.min(255, Math.max(0, (n >> 16) + amt));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 255) + amt));
+  const b = Math.min(255, Math.max(0, (n & 255) + amt));
   return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
 }
+const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s || '');
+
+// Presets d'apparence personnelle : jeux de tokens complets appliqués par-dessus le thème serveur.
+const PRESET_KEYS = [
+  '--bg', '--bg-2', '--surface', '--surface-2', '--surface-3',
+  '--border', '--border-strong', '--text', '--text-dim', '--text-faint', '--shadow',
+];
+const PRESETS = {
+  nuit: {
+    '--bg': '#050506', '--bg-2': '#0a0a0b', '--surface': '#111113',
+    '--surface-2': '#17171a', '--surface-3': '#1f1f23', '--border': '#26262b',
+    '--border-strong': '#37373e', '--text': '#f4f4f5', '--text-dim': '#a1a1aa',
+    '--text-faint': '#6b6b73', '--shadow': '0 12px 40px -10px rgba(0,0,0,0.7)',
+  },
+  ardoise: {
+    '--bg': '#0d1117', '--bg-2': '#111722', '--surface': '#161d2b',
+    '--surface-2': '#1c2536', '--surface-3': '#243044', '--border': '#2b3648',
+    '--border-strong': '#3b4a63', '--text': '#e8edf5', '--text-dim': '#9aa8bd',
+    '--text-faint': '#66738a', '--shadow': '0 12px 40px -12px rgba(0,0,0,0.55)',
+  },
+  clair: {
+    '--bg': '#f4f5f7', '--bg-2': '#eceef2', '--surface': '#ffffff',
+    '--surface-2': '#f6f7f9', '--surface-3': '#eef0f3', '--border': '#dfe3e9',
+    '--border-strong': '#c6ccd5', '--text': '#1b1e24', '--text-dim': '#5b626c',
+    '--text-faint': '#8b929c', '--shadow': '0 14px 40px -14px rgba(20,24,31,0.20)',
+  },
+};
+
 let appName = 'Volt Support';
-function applyTheme(t) {
-  if (!t) return;
+let serverTheme = { appName: 'Volt Support', accent: '#ff9d00', bg: '#0a0a0c' };
+let myPref = loadPref(); // { preset, accent } | null
+
+function loadPref() {
+  try {
+    const p = JSON.parse(localStorage.getItem('volt_pref') || 'null');
+    if (p && (PRESETS[p.preset] || isHex(p.accent))) return p;
+  } catch {}
+  return null;
+}
+function savePref() {
+  try {
+    if (myPref) localStorage.setItem('volt_pref', JSON.stringify(myPref));
+    else localStorage.removeItem('volt_pref');
+  } catch {}
+}
+
+function setAccentVars(hex) {
+  if (!isHex(hex)) return;
   const r = document.documentElement.style;
-  if (/^#[0-9a-f]{6}$/i.test(t.accent || '')) {
-    r.setProperty('--accent', t.accent);
-    r.setProperty('--accent-bright', lighten(t.accent, 30));
-    r.setProperty('--accent-deep', lighten(t.accent, -40));
-    r.setProperty('--glow', t.accent + '59');
-    r.setProperty('--glow-soft', t.accent + '24');
-  }
-  if (/^#[0-9a-f]{6}$/i.test(t.bg || '')) {
-    r.setProperty('--bg', t.bg);
-    r.setProperty('--bg-2', lighten(t.bg, 4));
-  }
-  if (t.appName) {
-    appName = t.appName;
-    document.title = appName;
-    const parts = appName.split(' ');
-    const last = parts.pop();
-    $('#login h1').innerHTML = parts.length
+  r.setProperty('--accent', hex);
+  r.setProperty('--accent-bright', lighten(hex, 30));
+  r.setProperty('--accent-deep', lighten(hex, -40));
+  r.setProperty('--glow', hex + '59');
+  r.setProperty('--glow-soft', hex + '24');
+}
+function setBgVars(hex) {
+  if (!isHex(hex)) return;
+  const r = document.documentElement.style;
+  r.setProperty('--bg', hex);
+  r.setProperty('--bg-2', lighten(hex, 4));
+}
+function applyAppName(name) {
+  if (!name) return;
+  appName = name;
+  document.title = appName;
+  const parts = name.split(' ');
+  const last = parts.pop();
+  const h1 = $('#login h1');
+  if (h1)
+    h1.innerHTML = parts.length
       ? `${esc(parts.join(' '))} <span class="accent">${esc(last)}</span>`
       : `<span class="accent">${esc(last)}</span>`;
-  }
 }
+
+// applique le thème serveur puis, par-dessus, l'apparence perso de ce staff
+function renderAppearance() {
+  const r = document.documentElement.style;
+  const preset = myPref && PRESETS[myPref.preset] ? myPref.preset : null;
+
+  if (preset) {
+    document.documentElement.dataset.appearance = preset;
+    for (const [k, v] of Object.entries(PRESETS[preset])) r.setProperty(k, v);
+  } else {
+    delete document.documentElement.dataset.appearance;
+    for (const k of PRESET_KEYS) r.removeProperty(k);
+    setBgVars(serverTheme.bg);
+  }
+  setAccentVars((myPref && myPref.accent) || serverTheme.accent);
+  applyAppName(serverTheme.appName);
+}
+
+// reçoit le thème serveur (owner) ; l'apparence perso reste prioritaire
+function applyTheme(t) {
+  if (!t) return;
+  serverTheme = {
+    appName: t.appName || serverTheme.appName,
+    accent: isHex(t.accent) ? t.accent : serverTheme.accent,
+    bg: isHex(t.bg) ? t.bg : serverTheme.bg,
+  };
+  renderAppearance();
+}
+
+renderAppearance(); // applique tout de suite ce qui est en localStorage (évite le flash)
 (async () => {
   try {
     const r = await fetch('/api/theme');
@@ -508,6 +586,18 @@ function handle(m) {
       if (Array.isArray(m.roles)) myRoles = m.roles.map(String);
       if (Array.isArray(m.assignRoles)) assignRoles = m.assignRoles;
       if (m.slaMinutes) slaMin = m.slaMinutes;
+      if (m.appearance !== undefined) {
+        myPref =
+          m.appearance && (PRESETS[m.appearance.preset] || isHex(m.appearance.accent))
+            ? {
+                preset: PRESETS[m.appearance.preset] ? m.appearance.preset : 'default',
+                accent: isHex(m.appearance.accent) ? m.appearance.accent : null,
+              }
+            : null;
+        savePref();
+        renderAppearance();
+        syncAppearanceControls();
+      }
       buildReqRoleSelect();
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
@@ -563,6 +653,12 @@ function handle(m) {
     case 'theme':
       applyTheme(m.theme);
       break;
+
+    case 'appearance_saved': {
+      const st = $('#appStatus');
+      if (st) st.textContent = m.ok ? 'enregistré ✓' : 'échec';
+      break;
+    }
 
     case 'assign_config':
       assignRoles = Array.isArray(m.assignRoles) ? m.assignRoles : [];
@@ -1103,8 +1199,11 @@ function fillSettings(s, scope) {
   const owner = scope === 'owner';
   $('#setOwnerBlock').classList.toggle('hidden', !owner);
   $('#setAppLine').classList.toggle('hidden', !owner);
+  $('#setActions').classList.toggle('hidden', !owner);
   $('#setLockNote').classList.toggle('hidden', owner);
   $('#setStatus').textContent = '';
+  $('#appStatus').textContent = '';
+  syncAppearanceControls();
   $('#setCats').value = (s.categories || categories).join('\n');
   $('#setWelcome').value = s.welcome ? s.welcome.text : '';
   $('#setWelcomeOn').checked = s.welcome ? s.welcome.enabled !== false : true;
@@ -1170,16 +1269,7 @@ function livePreview() {
 );
 $('#setSave').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;
-  if (settingsScope !== 'owner') {
-    ws.send(
-      JSON.stringify({
-        type: 'save_settings',
-        patch: { theme: { accent: $('#setAccent').value, bg: $('#setBg').value } },
-      }),
-    );
-    $('#setStatus').textContent = 'enregistrement…';
-    return;
-  }
+  if (settingsScope !== 'owner') return; // les non-owner n'ont que « Mon apparence »
   const cats = $('#setCats').value
     .split('\n')
     .map((s) => s.trim())
@@ -1219,6 +1309,49 @@ $('#setSave').addEventListener('click', () => {
 });
 $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
+});
+
+/* ---------------- mon apparence (perso, visible par moi seul) ---------------- */
+function syncAppearanceControls() {
+  const sel = $('#appPreset');
+  const col = $('#appAccent');
+  if (sel) sel.value = myPref && PRESETS[myPref.preset] ? myPref.preset : 'default';
+  if (col)
+    col.value =
+      myPref && isHex(myPref.accent) ? myPref.accent : serverTheme.accent || '#ff9d00';
+}
+function persistAppearance() {
+  savePref();
+  renderAppearance();
+  if (ws && ws.readyState === 1) {
+    ws.send(
+      JSON.stringify({
+        type: 'save_appearance',
+        preset: myPref ? myPref.preset : 'default',
+        accent: myPref && myPref.accent ? myPref.accent : null,
+      }),
+    );
+  }
+  const st = $('#appStatus');
+  if (st) st.textContent = 'enregistré ✓';
+}
+$('#appPreset').addEventListener('change', (e) => {
+  const v = e.target.value;
+  const accent = myPref && isHex(myPref.accent) ? myPref.accent : null;
+  myPref = v === 'default' && !accent ? null : { preset: v, accent };
+  persistAppearance();
+});
+$('#appAccent').addEventListener('input', (e) => {
+  const preset = myPref && PRESETS[myPref.preset] ? myPref.preset : 'default';
+  myPref = { preset, accent: e.target.value };
+  savePref();
+  renderAppearance(); // aperçu fluide pendant qu'on choisit
+});
+$('#appAccent').addEventListener('change', () => persistAppearance());
+$('#appReset').addEventListener('click', () => {
+  myPref = null;
+  persistAppearance();
+  syncAppearanceControls();
 });
 
 $('#staffViewBtn').addEventListener('click', () => {

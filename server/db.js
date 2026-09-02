@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [] };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {} };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -21,6 +21,7 @@ if (existsSync(FILE)) {
     data.pushSubs ||= [];
     data.settings ||= {};
     data.suggestions ||= [];
+    data.userThemes ||= {};
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -293,6 +294,29 @@ export function setSuggestionDone(id, done) {
 export function deleteSuggestion(id) {
   const i = data.suggestions.findIndex((x) => x.id === id);
   if (i !== -1) { data.suggestions.splice(i, 1); save(); }
+}
+
+/* ---------------- apparence personnelle (par staff) ---------------- */
+// Chaque staff choisit son propre thème ; visible par lui seul, sur tous ses appareils.
+const APPEARANCE_PRESETS = ['nuit', 'ardoise', 'clair'];
+export function getUserTheme(uid) {
+  return data.userThemes[String(uid)] || null;
+}
+export function setUserTheme(uid, pref) {
+  const id = String(uid);
+  const preset = String(pref?.preset || 'default');
+  const accent = /^#[0-9a-fA-F]{6}$/.test(pref?.accent || '') ? pref.accent : null;
+  // "default" ou preset inconnu sans accent perso -> on efface (retour au thème serveur)
+  if (!APPEARANCE_PRESETS.includes(preset) && !accent) {
+    delete data.userThemes[id];
+  } else {
+    data.userThemes[id] = {
+      preset: APPEARANCE_PRESETS.includes(preset) ? preset : 'default',
+      accent,
+    };
+  }
+  save();
+  return data.userThemes[id] || null;
 }
 
 /* ---------------- charge par staff ---------------- */

@@ -44,6 +44,8 @@ import {
   listSuggestions,
   setSuggestionDone,
   deleteSuggestion,
+  getUserTheme,
+  setUserTheme,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -222,6 +224,7 @@ export function registerGateway(app) {
         roles: entry.roleIds,
         assignRoles: effectiveAssignRoles(),
         slaMinutes: effectiveSla(),
+        appearance: getUserTheme(session.uid),
       });
       send(entry, { type: 'categories', categories: effectiveCategories() });
       send(entry, {
@@ -267,21 +270,22 @@ export function registerGateway(app) {
         });
         return;
       }
+      /* ---- apparence personnelle (tous les staff) ---- */
+      if (msg.type === 'save_appearance') {
+        const pref = setUserTheme(session.uid, {
+          preset: msg.preset,
+          accent: msg.accent,
+        });
+        send(entry, { type: 'appearance_saved', ok: true, appearance: pref });
+        return;
+      }
+
       if (msg.type === 'save_settings') {
         const p = msg.patch || {};
 
-        // staff non-owner : uniquement les couleurs du thème
+        // le thème global (nom + couleurs par défaut) est réservé à l'owner.
         if (!entry.isOwner) {
-          const cur = effectiveTheme();
-          const accent = /^#[0-9a-fA-F]{6}$/.test(p.theme?.accent || '')
-            ? p.theme.accent
-            : cur.accent;
-          const bg = /^#[0-9a-fA-F]{6}$/.test(p.theme?.bg || '')
-            ? p.theme.bg
-            : cur.bg;
-          updateSettings({ theme: { appName: cur.appName, accent, bg } });
-          send(entry, { type: 'settings_saved', ok: true });
-          broadcastAll({ type: 'theme', theme: effectiveTheme() });
+          send(entry, { type: 'settings_saved', ok: false, reason: 'forbidden' });
           return;
         }
 
@@ -765,6 +769,7 @@ export function registerGateway(app) {
             roles: c.roleIds,
             assignRoles: effectiveAssignRoles(),
             slaMinutes: effectiveSla(),
+            appearance: getUserTheme(c.session.uid),
           });
           send(c, { type: 'tickets', tickets: visibleTickets(level) });
           changed = true;

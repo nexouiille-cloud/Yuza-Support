@@ -201,17 +201,34 @@
       <section id="viewSettings" class="view">
         <div class="stats-head"><h2>⚙️ Réglages</h2><span id="setStatus" class="who"></span></div>
         <div id="setBody">
-          <div class="setgrp">
-            <h4>Apparence</h4>
-            <label class="setline" id="setAppLine">Nom affiché <input type="text" id="setAppName" maxlength="40" /></label>
-            <label class="setline">Couleur d'accent <input type="color" id="setAccent" /></label>
-            <label class="setline">Couleur de fond <input type="color" id="setBg" /></label>
-            <p class="muted">L'aperçu s'applique tout de suite ; « Enregistrer » le rend permanent pour tout le monde.</p>
+          <div class="setgrp" id="setMineGrp">
+            <h4>Mon apparence</h4>
+            <p class="muted">Visible par toi seul, sur tous tes appareils. S'applique tout de suite et se garde.</p>
+            <label class="setline">Thème
+              <select id="appPreset">
+                <option value="default">Défaut du serveur</option>
+                <option value="nuit">Noir profond</option>
+                <option value="ardoise">Ardoise (bleu-gris)</option>
+                <option value="clair">Clair</option>
+              </select>
+            </label>
+            <label class="setline">Couleur d'accent (perso) <input type="color" id="appAccent" /></label>
+            <div class="setline" style="gap:14px">
+              <button id="appReset" class="linkbtn" type="button">↺ Revenir au thème du serveur</button>
+              <span id="appStatus" class="who"></span>
+            </div>
           </div>
 
-          <p id="setLockNote" class="muted hidden">🔒 Les autres réglages sont réservés à l'owner du serveur.</p>
+          <p id="setLockNote" class="muted hidden">🔒 Les réglages ci-dessous sont réservés à l'owner du serveur.</p>
 
           <div id="setOwnerBlock">
+            <div class="setgrp">
+              <h4>Thème du serveur (par défaut)</h4>
+              <label class="setline" id="setAppLine">Nom affiché <input type="text" id="setAppName" maxlength="40" /></label>
+              <label class="setline">Couleur d'accent <input type="color" id="setAccent" /></label>
+              <label class="setline">Couleur de fond <input type="color" id="setBg" /></label>
+              <p class="muted">Ce que voient les staff qui n'ont pas personnalisé leur apparence.</p>
+            </div>
             <div class="setgrp">
               <h4>Catégories de tickets</h4>
               <p class="muted">Une par ligne. L'ordre est respecté dans la liste des tickets.</p>
@@ -267,7 +284,7 @@
             </div>
           </div>
 
-          <div class="set-actions">
+          <div class="set-actions" id="setActions">
             <button id="setSave" class="btn-accent" type="button">Enregistrer</button>
             <button id="setReload" class="linkbtn" type="button">Annuler les modifs</button>
           </div>

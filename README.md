@@ -55,7 +55,8 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Fiche membre** | recherche pseudo/ID sur l'accueil (ou bouton 👤 dans un ticket) → profil : 1er contact, nb messages, staff ayant répondu, statut, blacklist… |
 | **Annuaire du serveur** | onglet 📇 : tous les membres Discord + leurs rôles, recherche par pseudo ou rôle, bouton **✉️ MP** → le bot envoie un message individuel (convocation, avertissement…). Trace postée dans le salon d'annonce. Envoi 1 par 1, limité à 15/min/staff. |
 | **Transcript** | bouton ⬇ dans un ticket → télécharge la conversation en fichier HTML autonome |
-| **Réglages** | onglet ⚙️. **Owner** (`OWNER_IDS`, sinon niveau le plus élevé) : tout — catégories, messages auto, salon d'annonce, rôles demandables, SLA, menu catégorie, fermeture auto, anti-flood, nom affiché. **Autres staff** : seulement les **couleurs** du thème. Stocké dans `data.json`. |
+| **Réglages** | onglet ⚙️. **Owner** (`OWNER_IDS`, sinon niveau le plus élevé) : tout — catégories, messages auto, salon d'annonce, rôles demandables, SLA, menu catégorie, fermeture auto, anti-flood, **thème du serveur** (nom affiché + couleurs par défaut). **Autres staff** : rien, à part « Mon apparence ». Stocké dans `data.json`. |
+| **Mon apparence** | dans ⚙️, section visible par **tous les staff**. Chacun choisit son propre thème (Défaut serveur / Noir profond / Ardoise / Clair) + sa couleur d'accent → **visible par lui seul**, sur tous ses appareils (gardé côté compte + `localStorage`). Le thème du serveur ne sert que de défaut pour ceux qui n'ont rien personnalisé. |
 | **Suggestions** | onglet 💡 : n'importe quel staff propose une amélioration → l'owner voit la liste (marquer fait / supprimer). |
 | **Charge par staff** | dans les Stats : nb de tickets ouverts assignés par staff. |
 | **Coller une image** | Ctrl+V dans le champ de réponse → envoi direct au client. |

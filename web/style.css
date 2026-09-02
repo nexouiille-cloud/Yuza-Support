@@ -228,7 +228,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .grp {
   padding: 8px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
-  color: var(--text-dim); background: #0c0b0d; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  color: var(--text-dim); background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
   cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px;
 }
 .grp .arw { display: inline-block; transition: transform 0.18s var(--ease); color: var(--text-faint); }
@@ -436,6 +436,23 @@ button:disabled { opacity: 0.45; cursor: default; }
 .mm-row .v.bad { color: var(--danger); }
 .mm-actions { margin-top: 16px; display: flex; gap: 8px; }
 .mm-empty { color: var(--text-dim); padding: 8px 0 4px; }
+
+/* ---------- apparence perso : retouches thème clair ---------- */
+:root[data-appearance="clair"] body::before { opacity: 0.4; }
+:root[data-appearance="clair"] ::-webkit-scrollbar-thumb { background: #c9ced6; }
+:root[data-appearance="clair"] ::-webkit-scrollbar-thumb:hover { background: #b3b9c3; }
+:root[data-appearance="clair"] .tk { border-bottom-color: var(--border); }
+:root[data-appearance="clair"] .m.staff {
+  background: linear-gradient(180deg, #ffe7c2, #ffdca6);
+  border-color: #e7bd82; color: #3a2a10;
+}
+:root[data-appearance="clair"] .m.staff .meta { color: #8a6a2e; }
+:root[data-appearance="clair"] .m .attfile { background: rgba(0, 0, 0, 0.06); }
+:root[data-appearance="clair"] .m .att { border-color: var(--border); }
+/* accent pâle peu lisible sur fond clair : on fonce le texte actif */
+:root[data-appearance="clair"] .navbtn.active,
+:root[data-appearance="clair"] #filters button.active { color: var(--accent-deep); }
+:root[data-appearance="clair"] .navbtn.active::before { background: var(--accent-deep); }
 
 /* ---------- responsive ---------- */
 @media (max-width: 760px) {
