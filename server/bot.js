@@ -80,7 +80,64 @@ bot.once(Events.ClientReady, async (c) => {
       `[bot] ⚠  le GUILD_ID du .env (${config.guildId}) n'est PAS dans cette liste`,
     );
   }
+  refreshMembers();
+  setInterval(refreshMembers, 10 * 60000).unref?.();
 });
+
+/* ---------------- cache des membres du serveur ---------------- */
+let membersCache = [];
+export async function refreshMembers() {
+  try {
+    const guild = await bot.guilds.fetch(config.guildId);
+    const members = await guild.members.fetch();
+    membersCache = [...members.values()]
+      .filter((m) => !m.user.bot)
+      .map((m) => ({
+        id: m.id,
+        name: m.nickname || m.user.globalName || m.user.username,
+        tag: m.user.username,
+        roles: [...m.roles.cache.values()]
+          .filter((r) => r.name !== '@everyone')
+          .sort((a, b) => b.position - a.position)
+          .map((r) => r.name),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    console.error('[bot] refreshMembers échoué :', err?.message || err);
+  }
+}
+export function searchMembers(query, limit = 80) {
+  const q = String(query || '').trim().toLowerCase();
+  let list = membersCache;
+  if (q) {
+    list = list.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.tag.toLowerCase().includes(q) ||
+        m.id.includes(q) ||
+        m.roles.some((r) => r.toLowerCase().includes(q)),
+    );
+  }
+  return { total: list.length, cached: membersCache.length, members: list.slice(0, limit) };
+}
+
+// Envoi d'un MP à un membre (convocation) + trace dans le salon d'annonce.
+export async function sendConvocation(userId, text, byName) {
+  const user = await bot.users.fetch(userId);
+  await user.send(text);
+  const ch = effectiveStaffChannel();
+  if (ch) {
+    try {
+      const c = await bot.channels.fetch(ch);
+      if (c?.isTextBased()) {
+        await c.send({
+          content: `✉️ **${byName}** a envoyé un MP à <@${userId}>`,
+          allowedMentions: { users: [], roles: [] },
+        });
+      }
+    } catch {}
+  }
+}
 
 // Un client écrit un MP au bot -> ça alimente / crée un ticket.
 bot.on(Events.MessageCreate, async (msg) => {

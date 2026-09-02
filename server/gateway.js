@@ -1,6 +1,12 @@
 import { config, levelName, maxLevel } from './config.js';
 import { verifySession } from './auth.js';
-import { getStaffMember, sendDM, pingRoleInChannel } from './bot.js';
+import {
+  getStaffMember,
+  sendDM,
+  pingRoleInChannel,
+  searchMembers,
+  sendConvocation,
+} from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
   listTickets,
@@ -379,6 +385,45 @@ export function registerGateway(app) {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         setRequestedRole(msg.userId, null);
         pushTickets();
+        return;
+      }
+
+      /* ---- annuaire des membres du serveur ---- */
+      if (msg.type === 'members') {
+        send(entry, { type: 'members', q: msg.q || '', ...searchMembers(msg.q) });
+        return;
+      }
+      if (msg.type === 'dm_member') {
+        const text = String(msg.text || '').trim().slice(0, 1800);
+        if (!msg.userId || !text) {
+          send(entry, { type: 'dm_member_result', ok: false, error: 'vide' });
+          return;
+        }
+        const now = Date.now();
+        entry.convo = (entry.convo || []).filter((t) => now - t < 60000);
+        if (entry.convo.length >= 15) {
+          send(entry, { type: 'dm_member_result', ok: false, error: 'trop_rapide' });
+          return;
+        }
+        entry.convo.push(now);
+        const { isStaff } = await getStaffMember(session.uid);
+        if (!isStaff) {
+          send(entry, { type: 'kicked', reason: 'role_removed' });
+          socket.close();
+          return;
+        }
+        try {
+          await sendConvocation(msg.userId, text, session.name);
+          send(entry, { type: 'dm_member_result', ok: true, userId: msg.userId });
+        } catch (err) {
+          send(entry, {
+            type: 'dm_member_result',
+            ok: false,
+            error: /cannot send messages to this user/i.test(String(err?.message))
+              ? 'mp_fermes'
+              : String(err?.message || err),
+          });
+        }
         return;
       }
 

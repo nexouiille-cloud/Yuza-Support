@@ -128,7 +128,66 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'stats' }));
   if (name === 'settings' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_settings' }));
+  if (name === 'members' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
 }
+
+/* ---------------- annuaire des membres du serveur ---------------- */
+let dmTarget = null;
+function renderMembersView(m) {
+  const box = $('#memberList');
+  $('#memCount').textContent =
+    m.total > m.members.length
+      ? `${m.members.length} affichés sur ${m.total} (${m.cached} au total)`
+      : `${m.total} membre${m.total > 1 ? 's' : ''}`;
+  if (!m.members.length) {
+    box.innerHTML = m.cached
+      ? '<div class="muted">Aucun membre ne correspond.</div>'
+      : '<div class="muted">Liste des membres en cours de chargement… réessaie dans un instant.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const mem of m.members) {
+    const el = document.createElement('div');
+    el.className = 'member-item';
+    el.innerHTML =
+      `<div class="mi-main"><span class="mi-name">${esc(mem.name)}</span> ` +
+      `<span class="mi-tag">@${esc(mem.tag)}</span>` +
+      (mem.roles.length
+        ? `<div class="mi-roles">${mem.roles.slice(0, 8).map((r) => `<span class="rchip">${esc(r)}</span>`).join('')}</div>`
+        : '') +
+      `</div>` +
+      `<button class="mi-dm" type="button">✉️ MP</button>`;
+    el.querySelector('.mi-dm').addEventListener('click', () => {
+      dmTarget = mem;
+      $('#dmTo').textContent = `MP à ${mem.name}`;
+      $('#dmText').value = '';
+      $('#dmSend').disabled = false;
+      $('#dmModal').classList.remove('hidden');
+      $('#dmText').focus();
+    });
+    box.appendChild(el);
+  }
+}
+let memSearchTimer = null;
+$('#memSearch').addEventListener('input', (e) => {
+  clearTimeout(memSearchTimer);
+  memSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ type: 'members', q: e.target.value.trim() }));
+  }, 250);
+});
+$('#dmClose').addEventListener('click', () => $('#dmModal').classList.add('hidden'));
+$('#dmModal').addEventListener('click', (e) => {
+  if (e.target.id === 'dmModal') $('#dmModal').classList.add('hidden');
+});
+$('#dmSend').addEventListener('click', () => {
+  const text = $('#dmText').value.trim();
+  if (!text || !dmTarget || !ws || ws.readyState !== 1) return;
+  $('#dmSend').disabled = true;
+  setStatus('Envoi…');
+  ws.send(JSON.stringify({ type: 'dm_member', userId: dmTarget.id, text }));
+});
 
 function renderStaffView() {
   const box = $('#staffList');
@@ -430,6 +489,26 @@ function handle(m) {
 
     case 'member':
       renderMemberModal(m.profile, m.query);
+      break;
+
+    case 'members':
+      renderMembersView(m);
+      break;
+
+    case 'dm_member_result':
+      if (m.ok) {
+        $('#dmModal').classList.add('hidden');
+        setStatus('MP envoyé.');
+      } else {
+        setStatus(
+          m.error === 'mp_fermes'
+            ? '⚠ Ce membre a ses MP fermés — impossible de le contacter.'
+            : m.error === 'trop_rapide'
+              ? 'Trop de MP d\'affilée, attends une minute.'
+              : `Échec de l'envoi (${m.error}).`,
+        );
+        $('#dmSend').disabled = false;
+      }
       break;
 
     case 'theme':

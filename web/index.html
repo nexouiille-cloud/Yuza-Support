@@ -46,6 +46,7 @@
       <button class="navbtn active" data-view="home"><span>🏠</span><span class="tip">Accueil</span></button>
       <button class="navbtn" data-view="tickets"><span>🎫</span><span class="tip">Tickets</span></button>
       <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Équipe en ligne</span></button>
+      <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membres du serveur</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Réglages</span></button>
       <span class="spacer"></span>
@@ -168,6 +169,13 @@
         <div id="staffList"></div>
       </section>
 
+      <!-- ---- Membres du serveur ---- -->
+      <section id="viewMembers" class="view">
+        <div class="stats-head"><h2>📇 Membres du serveur</h2><span id="memCount" class="who"></span></div>
+        <input id="memSearch" type="search" placeholder="Chercher un membre ou un rôle…" autocomplete="off" />
+        <div id="memberList"></div>
+      </section>
+
       <!-- ---- Réglages ---- -->
       <section id="viewSettings" class="view">
         <div class="stats-head"><h2>⚙️ Réglages</h2><span id="setStatus" class="who"></span></div>
@@ -262,6 +270,15 @@
     <div class="mm-card">
       <div class="mm-head"><strong>Fiche membre</strong><button id="mmClose" class="linkbtn">Fermer ✕</button></div>
       <div id="mmBody"></div>
+    </div>
+  </div>
+
+  <div id="dmModal" class="hidden">
+    <div class="mm-card">
+      <div class="mm-head"><strong id="dmTo">Envoyer un MP</strong><button id="dmClose" class="linkbtn">Annuler</button></div>
+      <p class="muted">Le message part en MP au nom du bot. Un log est posté dans le salon d'annonce.</p>
+      <textarea id="dmText" rows="5" placeholder="Ton message (convocation, avertissement, info…)"></textarea>
+      <div class="mm-actions"><button id="dmSend" class="btn-accent" type="button">Envoyer le MP</button></div>
     </div>
   </div>
 
