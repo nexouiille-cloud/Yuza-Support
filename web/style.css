@@ -334,7 +334,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 #attachBtn { font-size: 15px; padding: 8px 11px; }
 
 /* ---------- vue stats ---------- */
-#viewStats, #viewStaff, #viewSettings, #viewMembers { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
+#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
+#sugText { width: 100%; max-width: 620px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
+#sugText:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
+#sugList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; margin-top: 26px; }
+.sug-item { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; }
+.sug-item.done { opacity: .55; }
+.sug-item .si-main { flex: 1; }
+.sug-item .si-by { color: var(--text-faint); font-size: 11px; }
+.sug-item .si-btns { display: flex; gap: 6px; flex-shrink: 0; }
 #memSearch {
   width: 100%; max-width: 460px; background: var(--surface); border: 1px solid var(--border); color: var(--text);
   padding: 10px 13px; border-radius: 10px; font: inherit; margin-bottom: 18px;

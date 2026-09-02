@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {} };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [] };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -20,6 +20,7 @@ if (existsSync(FILE)) {
     data.blacklist ||= [];
     data.pushSubs ||= [];
     data.settings ||= {};
+    data.suggestions ||= [];
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -275,6 +276,35 @@ export function staleTickets(hours) {
   );
 }
 
+/* ---------------- suggestions ---------------- */
+export function addSuggestion(by, text) {
+  const s = { id: ++data.seq, by, text: String(text).slice(0, 800), at: Date.now(), done: false };
+  data.suggestions.push(s);
+  save();
+  return s;
+}
+export function listSuggestions() {
+  return [...data.suggestions].sort((a, b) => (a.done - b.done) || b.at - a.at);
+}
+export function setSuggestionDone(id, done) {
+  const s = data.suggestions.find((x) => x.id === id);
+  if (s) { s.done = !!done; save(); }
+}
+export function deleteSuggestion(id) {
+  const i = data.suggestions.findIndex((x) => x.id === id);
+  if (i !== -1) { data.suggestions.splice(i, 1); save(); }
+}
+
+/* ---------------- charge par staff ---------------- */
+export function workload() {
+  const w = {};
+  for (const t of Object.values(data.tickets)) {
+    if (t.status === 'closed' || !t.assignee_name) continue;
+    w[t.assignee_name] = (w[t.assignee_name] || 0) + 1;
+  }
+  return w;
+}
+
 /* ---------------- fiche membre ---------------- */
 export function findTicketId(query) {
   const q = String(query || '').trim().toLowerCase();
@@ -434,6 +464,7 @@ export function getStats(maxLevel = Infinity) {
     byCategory,
     byStaff,
     perDay,
+    workload: workload(),
   };
 }
 

@@ -130,6 +130,43 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'get_settings' }));
   if (name === 'members' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
+  if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
+    ws.send(JSON.stringify({ type: 'get_suggestions' }));
+}
+
+/* ---------------- suggestions ---------------- */
+$('#sugSend').addEventListener('click', () => {
+  const text = $('#sugText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#sugSend').disabled = true;
+  $('#sugStatus').textContent = 'envoi…';
+  ws.send(JSON.stringify({ type: 'suggest', text }));
+});
+function renderSugList(list) {
+  const box = $('#sugList');
+  box.classList.toggle('hidden', settingsScope !== 'owner');
+  if (settingsScope !== 'owner') return;
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Aucune suggestion.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const s of list) {
+    const el = document.createElement('div');
+    el.className = 'sug-item' + (s.done ? ' done' : '');
+    el.innerHTML =
+      `<div class="si-main">${esc(s.text)}<div class="si-by">${esc(s.by)} · ${new Date(s.at).toLocaleString('fr-FR')}</div></div>` +
+      `<div class="si-btns"><button class="linkbtn si-done" type="button">${s.done ? '↩' : '✓'}</button>` +
+      `<button class="linkbtn si-del" type="button">🗑</button></div>`;
+    el.querySelector('.si-done').addEventListener('click', () =>
+      ws.send(JSON.stringify({ type: 'suggestion_done', id: s.id, done: !s.done })),
+    );
+    el.querySelector('.si-del').addEventListener('click', () => {
+      if (window.confirm('Supprimer cette suggestion ?'))
+        ws.send(JSON.stringify({ type: 'suggestion_del', id: s.id }));
+    });
+    box.appendChild(el);
+  }
 }
 
 /* ---------------- annuaire des membres du serveur ---------------- */
@@ -245,6 +282,8 @@ function renderHome() {
   $('#cOpenHint').textContent = unassigned
     ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
     : 'tout est pris en charge';
+  const sh = $('#cStaffHint');
+  if (sh) sh.textContent = `${presence.length} connecté${presence.length > 1 ? 's' : ''}`;
 
   const myReq = [...tickets.values()].filter(
     (t) => t.requested_role && myRoles.includes(String(t.requested_role.roleId)),
@@ -495,6 +534,16 @@ function handle(m) {
       renderMembersView(m);
       break;
 
+    case 'suggestions':
+      renderSugList(m.list || []);
+      break;
+
+    case 'suggest_ok':
+      $('#sugText').value = '';
+      $('#sugStatus').textContent = '✓ envoyée, merci !';
+      $('#sugSend').disabled = false;
+      break;
+
     case 'dm_member_result':
       if (m.ok) {
         $('#dmModal').classList.add('hidden');
@@ -544,12 +593,14 @@ function handle(m) {
     }
 
     case 'settings_meta':
-      $('#settingsNav').classList.toggle('hidden', !m.canEditSettings);
+      settingsScope = m.settingsScope || 'colors';
+      $('#settingsNav').classList.remove('hidden'); // tout le staff : au moins les couleurs
       if (m.theme) applyTheme(m.theme);
       break;
 
     case 'settings':
-      fillSettings(m.settings, m.canEdit);
+      settingsScope = m.scope || settingsScope;
+      fillSettings(m.settings, settingsScope);
       break;
 
     case 'settings_saved':
@@ -700,13 +751,20 @@ function renderStats(s) {
     ? staff.map(([k, v]) => rowBar(k, v, staffMax)).join('')
     : '<div class="muted">—</div>';
 
+  const wl = Object.entries(s.workload || {}).sort((a, b) => b[1] - a[1]);
+  const wlMax = Math.max(1, ...wl.map((c) => c[1]));
+  const wlRows = wl.length
+    ? wl.map(([k, v]) => rowBar(k, v, wlMax)).join('')
+    : '<div class="muted">Aucun ticket en cours assigné.</div>';
+
   $('#statsBody').innerHTML =
     `<div class="kpis">${kpi('Total', s.total)}${kpi('Ouverts', s.open)}` +
     `${kpi('Clôturés', s.closed)}${kpi('Non assignés', s.unassigned)}` +
     `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}</div>` +
+    `<h4>Charge actuelle par staff (tickets ouverts assignés)</h4>${wlRows}` +
     `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
     `<h4>Par catégorie</h4>${catRows}` +
-    `<h4>Réponses par staff</h4>${staffRows}`;
+    `<h4>Réponses par staff (total)</h4>${staffRows}`;
 }
 
 $('#statsClose').addEventListener('click', () => showView('home'));
@@ -1040,13 +1098,13 @@ $('#memberModal').addEventListener('click', (e) => {
 });
 
 /* ---------------- réglages ---------------- */
-let settingsCanEdit = false;
-function fillSettings(s, canEdit) {
-  settingsCanEdit = !!canEdit;
-  $('#setBody').classList.toggle('locked', !canEdit);
-  $('#setStatus').textContent = canEdit
-    ? ''
-    : 'lecture seule — réservé au niveau le plus élevé';
+let settingsScope = 'colors';
+function fillSettings(s, scope) {
+  const owner = scope === 'owner';
+  $('#setOwnerBlock').classList.toggle('hidden', !owner);
+  $('#setAppLine').classList.toggle('hidden', !owner);
+  $('#setLockNote').classList.toggle('hidden', owner);
+  $('#setStatus').textContent = '';
   $('#setCats').value = (s.categories || categories).join('\n');
   $('#setWelcome').value = s.welcome ? s.welcome.text : '';
   $('#setWelcomeOn').checked = s.welcome ? s.welcome.enabled !== false : true;
@@ -1111,7 +1169,17 @@ function livePreview() {
   $(sel).addEventListener('input', livePreview),
 );
 $('#setSave').addEventListener('click', () => {
-  if (!settingsCanEdit || !ws || ws.readyState !== 1) return;
+  if (!ws || ws.readyState !== 1) return;
+  if (settingsScope !== 'owner') {
+    ws.send(
+      JSON.stringify({
+        type: 'save_settings',
+        patch: { theme: { accent: $('#setAccent').value, bg: $('#setBg').value } },
+      }),
+    );
+    $('#setStatus').textContent = 'enregistrement…';
+    return;
+  }
   const cats = $('#setCats').value
     .split('\n')
     .map((s) => s.trim())
@@ -1262,18 +1330,13 @@ $('#input').addEventListener('keydown', (e) => {
 });
 
 /* ---------------- pièce jointe staff -> client ---------------- */
-$('#attachBtn').addEventListener('click', () => {
-  if (current) $('#fileInput').click();
-});
-$('#fileInput').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
+async function uploadAttachment(file) {
   if (!file || !current) return;
-  setStatus(`Envoi de ${file.name}…`);
+  setStatus(`Envoi de ${file.name || 'image'}…`);
   const fd = new FormData();
   fd.append('userId', current); // AVANT le fichier (champs lus dans l'ordre)
   fd.append('caption', $('#input').value.trim());
-  fd.append('file', file, file.name);
+  fd.append('file', file, file.name || 'image.png');
   try {
     const r = await fetch('/api/attach', {
       method: 'POST',
@@ -1290,6 +1353,23 @@ $('#fileInput').addEventListener('change', async (e) => {
   } catch (err) {
     setStatus('Échec envoi pièce jointe : ' + (err.message || err));
   }
+}
+$('#attachBtn').addEventListener('click', () => {
+  if (current) $('#fileInput').click();
+});
+$('#fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  uploadAttachment(file);
+});
+// coller une image directement (Ctrl+V) dans le champ de réponse
+$('#input').addEventListener('paste', (e) => {
+  const item = [...(e.clipboardData?.items || [])].find((it) =>
+    it.type.startsWith('image/'),
+  );
+  if (!item || !current) return;
+  e.preventDefault();
+  uploadAttachment(item.getAsFile());
 });
 $('#closeBtn').addEventListener('click', () => {
   if (current) ws.send(JSON.stringify({ type: 'close', userId: current }));

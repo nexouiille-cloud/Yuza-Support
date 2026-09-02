@@ -47,6 +47,7 @@
       <button class="navbtn" data-view="tickets"><span>🎫</span><span class="tip">Tickets</span></button>
       <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Équipe en ligne</span></button>
       <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membres du serveur</span></button>
+      <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestions</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Réglages</span></button>
       <span class="spacer"></span>
@@ -77,15 +78,26 @@
           <button class="card" data-go="stats">
             <div class="ico">📊</div>
             <div><div class="lbl">Statistiques</div>
-                 <div class="hint">activité, temps de réponse, par staff…</div></div>
+                 <div class="hint">activité, temps de réponse, charge par staff…</div></div>
+          </button>
+          <button class="card" data-go="staff">
+            <div class="ico">👥</div>
+            <div><div class="lbl">Équipe en ligne</div>
+                 <div class="hint" id="cStaffHint">qui est connecté</div></div>
+          </button>
+          <button class="card" data-go="members">
+            <div class="ico">📇</div>
+            <div><div class="lbl">Membres du serveur</div>
+                 <div class="hint">annuaire + envoi de MP</div></div>
+          </button>
+          <button class="card" data-go="suggest">
+            <div class="ico">💡</div>
+            <div><div class="lbl">Suggestions</div>
+                 <div class="hint">proposer une amélioration</div></div>
           </button>
           <div class="card soon"><span class="tag">bientôt</span>
             <div class="ico">⚡</div>
             <div><div class="lbl">Macros</div><div class="hint">réponses pré-écrites en 1 clic</div></div>
-          </div>
-          <div class="card soon"><span class="tag">bientôt</span>
-            <div class="ico">⚙️</div>
-            <div><div class="lbl">Réglages</div><div class="hint">catégories, message d'accueil…</div></div>
           </div>
         </div>
       </section>
@@ -169,6 +181,15 @@
         <div id="staffList"></div>
       </section>
 
+      <!-- ---- Suggestions ---- -->
+      <section id="viewSuggest" class="view">
+        <div class="stats-head"><h2>💡 Suggestions</h2></div>
+        <p class="muted">Une idée pour améliorer le panel ? Écris-la, l'équipe la verra.</p>
+        <textarea id="sugText" rows="3" placeholder="Ta suggestion…"></textarea>
+        <div class="mm-actions"><button id="sugSend" class="btn-accent" type="button">Envoyer</button><span id="sugStatus" class="who"></span></div>
+        <div id="sugList" class="hidden"></div>
+      </section>
+
       <!-- ---- Membres du serveur ---- -->
       <section id="viewMembers" class="view">
         <div class="stats-head"><h2>📇 Membres du serveur</h2><span id="memCount" class="who"></span></div>
@@ -181,65 +202,71 @@
         <div class="stats-head"><h2>⚙️ Réglages</h2><span id="setStatus" class="who"></span></div>
         <div id="setBody">
           <div class="setgrp">
-            <h4>Catégories de tickets</h4>
-            <p class="muted">Une par ligne. L'ordre est respecté dans la liste des tickets.</p>
-            <textarea id="setCats" rows="8" spellcheck="false"></textarea>
-          </div>
-          <div class="setgrp">
-            <h4>Message d'accueil automatique</h4>
-            <p class="muted"><code>{name}</code> = pseudo du client. Décoche pour désactiver.</p>
-            <label class="setline"><input type="checkbox" id="setWelcomeOn" /> Envoyer un message d'accueil</label>
-            <textarea id="setWelcome" rows="4" spellcheck="false"></textarea>
-          </div>
-          <div class="setgrp">
-            <h4>Message envoyé au client à la clôture</h4>
-            <p class="muted"><code>{name}</code> = pseudo du client. Décoche pour désactiver.</p>
-            <label class="setline"><input type="checkbox" id="setCloseOn" /> Envoyer un message quand un ticket est clôturé</label>
-            <textarea id="setClose" rows="4" spellcheck="false"></textarea>
-          </div>
-          <div class="setgrp">
-            <h4>Annonce Discord des nouveaux tickets</h4>
-            <p class="muted">Laisse vide pour désactiver. IDs Discord (mode développeur).</p>
-            <label class="setline">Salon d'annonce <input type="text" id="setChan" placeholder="ID du salon" /></label>
-            <label class="setline">Rôle à ping <input type="text" id="setPing" placeholder="ID du rôle" /></label>
-          </div>
-          <div class="setgrp">
             <h4>Apparence</h4>
-            <label class="setline">Nom affiché <input type="text" id="setAppName" maxlength="40" /></label>
+            <label class="setline" id="setAppLine">Nom affiché <input type="text" id="setAppName" maxlength="40" /></label>
             <label class="setline">Couleur d'accent <input type="color" id="setAccent" /></label>
             <label class="setline">Couleur de fond <input type="color" id="setBg" /></label>
             <p class="muted">L'aperçu s'applique tout de suite ; « Enregistrer » le rend permanent pour tout le monde.</p>
           </div>
-          <div class="setgrp">
-            <h4>Rôles qu'on peut « demander » sur un ticket</h4>
-            <p class="muted">Ex : <code>Resp Illegal</code>, <code>Resp Légal</code>, <code>Admin</code>… Ajoute le nom maintenant, l'ID Discord du rôle plus tard. Un staff pourra demander ce rôle dans un ticket → les membres du rôle sont alertés.</p>
-            <div id="setRoles"></div>
-            <button id="setRoleAdd" class="linkbtn" type="button">+ Ajouter un rôle</button>
+
+          <p id="setLockNote" class="muted hidden">🔒 Les autres réglages sont réservés à l'owner du serveur.</p>
+
+          <div id="setOwnerBlock">
+            <div class="setgrp">
+              <h4>Catégories de tickets</h4>
+              <p class="muted">Une par ligne. L'ordre est respecté dans la liste des tickets.</p>
+              <textarea id="setCats" rows="8" spellcheck="false"></textarea>
+            </div>
+            <div class="setgrp">
+              <h4>Message d'accueil automatique</h4>
+              <p class="muted"><code>{name}</code> = pseudo du client. Décoche pour désactiver.</p>
+              <label class="setline"><input type="checkbox" id="setWelcomeOn" /> Envoyer un message d'accueil</label>
+              <textarea id="setWelcome" rows="4" spellcheck="false"></textarea>
+            </div>
+            <div class="setgrp">
+              <h4>Message envoyé au client à la clôture</h4>
+              <p class="muted"><code>{name}</code> = pseudo du client. Décoche pour désactiver.</p>
+              <label class="setline"><input type="checkbox" id="setCloseOn" /> Envoyer un message quand un ticket est clôturé</label>
+              <textarea id="setClose" rows="4" spellcheck="false"></textarea>
+            </div>
+            <div class="setgrp">
+              <h4>Annonce Discord des nouveaux tickets</h4>
+              <p class="muted">Laisse vide pour désactiver. IDs Discord (mode développeur).</p>
+              <label class="setline">Salon d'annonce <input type="text" id="setChan" placeholder="ID du salon" /></label>
+              <label class="setline">Rôle à ping <input type="text" id="setPing" placeholder="ID du rôle" /></label>
+            </div>
+            <div class="setgrp">
+              <h4>Rôles qu'on peut « demander » sur un ticket</h4>
+              <p class="muted">Ex : <code>Resp Illegal</code>, <code>Resp Légal</code>, <code>Admin</code>… Nom maintenant, ID du rôle plus tard.</p>
+              <div id="setRoles"></div>
+              <button id="setRoleAdd" class="linkbtn" type="button">+ Ajouter un rôle</button>
+            </div>
+            <div class="setgrp">
+              <h4>Minuteur SLA</h4>
+              <label class="setline">Alerte si un client attend depuis plus de
+                <input type="number" id="setSla" min="1" max="1440" style="width:80px;flex:0" /> minutes</label>
+            </div>
+            <div class="setgrp">
+              <h4>Menu catégorie au 1er message</h4>
+              <label class="setline"><input type="checkbox" id="setAsk" /> Envoyer des boutons de catégorie au client dès l'ouverture du ticket</label>
+            </div>
+            <div class="setgrp">
+              <h4>Fermeture automatique des tickets inactifs</h4>
+              <label class="setline"><input type="checkbox" id="setAcOn" /> Activer</label>
+              <label class="setline">Relancer le client après <input type="number" id="setAcWarn" min="1" style="width:70px;flex:0" /> h sans réponse</label>
+              <label class="setline">Fermer après <input type="number" id="setAcClose" min="1" style="width:70px;flex:0" /> h sans réponse</label>
+            </div>
+            <div class="setgrp">
+              <h4>Anti-flood (spam de MP)</h4>
+              <label class="setline"><input type="checkbox" id="setFlOn" /> Activer</label>
+              <label class="setline">Seuil : <input type="number" id="setFlCount" min="2" style="width:60px;flex:0" /> messages en <input type="number" id="setFlWin" min="3" style="width:60px;flex:0" /> s → mise en pause <input type="number" id="setFlMute" min="1" style="width:60px;flex:0" /> min</label>
+            </div>
+            <div class="setgrp">
+              <h4>Rôles staff & niveaux</h4>
+              <p class="muted">Modifiables dans les variables d'hébergement (<code>STAFF_ROLE_IDS</code>, <code>STAFF_TIERS</code>, <code>OWNER_IDS</code>).</p>
+            </div>
           </div>
-          <div class="setgrp">
-            <h4>Minuteur SLA</h4>
-            <label class="setline">Alerte si un client attend depuis plus de
-              <input type="number" id="setSla" min="1" max="1440" style="width:80px;flex:0" /> minutes</label>
-          </div>
-          <div class="setgrp">
-            <h4>Menu catégorie au 1er message</h4>
-            <label class="setline"><input type="checkbox" id="setAsk" /> Envoyer des boutons de catégorie au client dès l'ouverture du ticket</label>
-          </div>
-          <div class="setgrp">
-            <h4>Fermeture automatique des tickets inactifs</h4>
-            <label class="setline"><input type="checkbox" id="setAcOn" /> Activer</label>
-            <label class="setline">Relancer le client après <input type="number" id="setAcWarn" min="1" style="width:70px;flex:0" /> h sans réponse</label>
-            <label class="setline">Fermer après <input type="number" id="setAcClose" min="1" style="width:70px;flex:0" /> h sans réponse</label>
-          </div>
-          <div class="setgrp">
-            <h4>Anti-flood (spam de MP)</h4>
-            <label class="setline"><input type="checkbox" id="setFlOn" /> Activer</label>
-            <label class="setline">Seuil : <input type="number" id="setFlCount" min="2" style="width:60px;flex:0" /> messages en <input type="number" id="setFlWin" min="3" style="width:60px;flex:0" /> s → mise en pause <input type="number" id="setFlMute" min="1" style="width:60px;flex:0" /> min</label>
-          </div>
-          <div class="setgrp">
-            <h4>Rôles staff & niveaux</h4>
-            <p class="muted">Modifiables dans les variables d'hébergement (<code>STAFF_ROLE_IDS</code>, <code>STAFF_TIERS</code>) — pas ici, pour éviter de te verrouiller dehors.</p>
-          </div>
+
           <div class="set-actions">
             <button id="setSave" class="btn-accent" type="button">Enregistrer</button>
             <button id="setReload" class="linkbtn" type="button">Annuler les modifs</button>

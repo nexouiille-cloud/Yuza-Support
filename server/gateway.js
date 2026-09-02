@@ -40,6 +40,10 @@ import {
   effectiveFlood,
   markAutoWarned,
   staleTickets,
+  addSuggestion,
+  listSuggestions,
+  setSuggestionDone,
+  deleteSuggestion,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -200,6 +204,9 @@ export function registerGateway(app) {
       }
       entry.level = level;
       entry.roleIds = roleIds || [];
+      entry.isOwner = config.ownerIds.length
+        ? config.ownerIds.includes(session.uid)
+        : level >= maxLevel;
       entry.ready = true;
       send(entry, {
         type: 'hello',
@@ -219,7 +226,8 @@ export function registerGateway(app) {
       send(entry, { type: 'categories', categories: effectiveCategories() });
       send(entry, {
         type: 'settings_meta',
-        canEditSettings: level >= maxLevel,
+        canEditSettings: true, // tous les staff : au moins les couleurs
+        settingsScope: entry.isOwner ? 'owner' : 'colors',
         theme: effectiveTheme(),
       });
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
@@ -255,16 +263,28 @@ export function registerGateway(app) {
         send(entry, {
           type: 'settings',
           settings: getSettings(),
-          canEdit: entry.level >= maxLevel,
+          scope: entry.isOwner ? 'owner' : 'colors',
         });
         return;
       }
       if (msg.type === 'save_settings') {
-        if (entry.level < maxLevel) {
-          send(entry, { type: 'settings_saved', ok: false, reason: 'forbidden' });
+        const p = msg.patch || {};
+
+        // staff non-owner : uniquement les couleurs du thème
+        if (!entry.isOwner) {
+          const cur = effectiveTheme();
+          const accent = /^#[0-9a-fA-F]{6}$/.test(p.theme?.accent || '')
+            ? p.theme.accent
+            : cur.accent;
+          const bg = /^#[0-9a-fA-F]{6}$/.test(p.theme?.bg || '')
+            ? p.theme.bg
+            : cur.bg;
+          updateSettings({ theme: { appName: cur.appName, accent, bg } });
+          send(entry, { type: 'settings_saved', ok: true });
+          broadcastAll({ type: 'theme', theme: effectiveTheme() });
           return;
         }
-        const p = msg.patch || {};
+
         const patch = {};
         if (Array.isArray(p.categories)) {
           patch.categories = [
@@ -385,6 +405,32 @@ export function registerGateway(app) {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         setRequestedRole(msg.userId, null);
         pushTickets();
+        return;
+      }
+
+      /* ---- suggestions ---- */
+      if (msg.type === 'suggest') {
+        const text = String(msg.text || '').trim();
+        if (!text) return;
+        addSuggestion(session.name, text);
+        for (const c of clients) {
+          if (c.isOwner) send(c, { type: 'suggestions', list: listSuggestions() });
+        }
+        send(entry, { type: 'suggest_ok' });
+        return;
+      }
+      if (msg.type === 'get_suggestions') {
+        if (!entry.isOwner) return;
+        send(entry, { type: 'suggestions', list: listSuggestions() });
+        return;
+      }
+      if (msg.type === 'suggestion_done' || msg.type === 'suggestion_del') {
+        if (!entry.isOwner) return;
+        if (msg.type === 'suggestion_del') deleteSuggestion(msg.id | 0);
+        else setSuggestionDone(msg.id | 0, !!msg.done);
+        for (const c of clients) {
+          if (c.isOwner) send(c, { type: 'suggestions', list: listSuggestions() });
+        }
         return;
       }
 

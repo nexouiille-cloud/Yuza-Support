@@ -52,6 +52,13 @@ function req(name) {
 const port = Number(process.env.PORT || 53134);
 const host = process.env.HOST || '127.0.0.1';
 
+// IDs Discord des "owners" : accès complet aux Réglages.
+// Vide => on retombe sur "niveau le plus élevé".
+const ownerIds = (process.env.OWNER_IDS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const staffRoleIds = req('STAFF_ROLE_IDS')
   .split(',')
   .map((s) => s.trim())
@@ -79,6 +86,7 @@ export const config = {
   clientSecret: req('CLIENT_SECRET'),
   guildId: req('GUILD_ID'),
   staffRoleIds,
+  ownerIds,
   port,
   host,
   oauthRedirectUri:
