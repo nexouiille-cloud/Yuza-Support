@@ -178,6 +178,7 @@ export function getSettings() {
   return {
     categories: data.settings.categories || null,
     welcome: data.settings.welcome || null,
+    closeMessage: data.settings.closeMessage || null,
     staffChannelId: data.settings.staffChannelId ?? null,
     staffPingRoleId: data.settings.staffPingRoleId ?? null,
     theme: data.settings.theme || null,
@@ -204,6 +205,14 @@ export function effectiveWelcome() {
     return s.text.trim() || null;
   }
   return config.welcomeMessage;
+}
+export function effectiveCloseMessage() {
+  const s = data.settings.closeMessage;
+  if (s && typeof s.text === 'string') {
+    if (s.enabled === false) return null;
+    return s.text.trim() || null;
+  }
+  return 'Ton ticket vient d\'être clôturé. Merci de nous avoir contactés — écris-nous à nouveau si tu as besoin. ✅';
 }
 export function effectiveStaffChannel() {
   const v = data.settings.staffChannelId;

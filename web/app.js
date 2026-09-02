@@ -971,6 +971,10 @@ function fillSettings(s, canEdit) {
   $('#setCats').value = (s.categories || categories).join('\n');
   $('#setWelcome').value = s.welcome ? s.welcome.text : '';
   $('#setWelcomeOn').checked = s.welcome ? s.welcome.enabled !== false : true;
+  $('#setClose').value = s.closeMessage
+    ? s.closeMessage.text
+    : "Ton ticket vient d'être clôturé. Merci de nous avoir contactés — écris-nous à nouveau si tu as besoin. ✅";
+  $('#setCloseOn').checked = s.closeMessage ? s.closeMessage.enabled !== false : true;
   $('#setChan').value = s.staffChannelId || '';
   $('#setPing').value = s.staffPingRoleId || '';
   const th = s.theme || {};
@@ -1039,6 +1043,7 @@ $('#setSave').addEventListener('click', () => {
       patch: {
         categories: cats,
         welcome: { text: $('#setWelcome').value, enabled: $('#setWelcomeOn').checked },
+        closeMessage: { text: $('#setClose').value, enabled: $('#setCloseOn').checked },
         staffChannelId: $('#setChan').value.trim(),
         staffPingRoleId: $('#setPing').value.trim(),
         assignRoles: gatherSetRoles(),

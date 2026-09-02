@@ -46,7 +46,8 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Vue Staff** | bouton 👁 : masque les messages client, ne montre que staff + notes + système |
 | **Pièces jointes** | client → image/fichier visible dans la conversation ; staff → bouton 📎 renvoie un fichier au client |
 | **Blacklist** | bouton 🚫 : le client ne peut plus ouvrir de ticket. Liste de départ : `server/blacklist.json` |
-| **Message d'accueil** | réponse auto à l'ouverture d'un ticket. Texte : `server/welcome.txt` (`{name}` = pseudo ; vide = désactivé) |
+| **Message d'accueil** | réponse auto à l'ouverture d'un ticket. Texte : `server/welcome.txt` ou Réglages (`{name}` = pseudo ; vide = désactivé) |
+| **Message de clôture** | MP auto envoyé au client quand un ticket est clôturé. Éditable dans Réglages (`{name}` ; activé par défaut). |
 | **Stats** | vue dédiée : total / ouverts / clôturés / non assignés, temps de réponse moyen, graphe 14 j, par catégorie, par staff |
 | **Notifications** | toast navigateur (onglet ouvert) + **Web Push** (onglet fermé, HTTPS requis) + compteur dans le titre + ping Discord dans un salon (`STAFF_CHANNEL_ID`) |
 | **Accueil** | écran à cartes : Tickets ouverts, Non assignés, Statistiques (+ Macros / Réglages « bientôt ») |

@@ -28,6 +28,7 @@ import {
   effectiveTheme,
   effectiveAssignRoles,
   effectiveSla,
+  effectiveCloseMessage,
   effectiveAskCategory,
   effectiveAutoClose,
   effectiveFlood,
@@ -268,6 +269,12 @@ export function registerGateway(app) {
           patch.welcome = {
             text: p.welcome.text.slice(0, 1500),
             enabled: p.welcome.enabled !== false,
+          };
+        }
+        if (p.closeMessage && typeof p.closeMessage.text === 'string') {
+          patch.closeMessage = {
+            text: p.closeMessage.text.slice(0, 1500),
+            enabled: p.closeMessage.enabled !== false,
           };
         }
         if (typeof p.staffChannelId === 'string') {
@@ -614,6 +621,16 @@ export function registerGateway(app) {
       if (msg.type === 'close' || msg.type === 'reopen') {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         setTicketStatus(msg.userId, msg.type === 'close' ? 'closed' : 'open');
+        if (msg.type === 'close') {
+          const tpl = effectiveCloseMessage();
+          if (tpl) {
+            const tk = getTicket(msg.userId);
+            const text = tpl.replace(/\{name\}/g, tk?.username || '');
+            sendDM(msg.userId, text).catch(() => {});
+            const sys = addMessage(msg.userId, 'system', 'Message auto', text);
+            broadcastTicket(msg.userId, { type: 'message', message: sys });
+          }
+        }
         pushTickets();
         return;
       }
