@@ -28,6 +28,81 @@
     </div>
   </div>
 
+  <!-- ================= GUIDE DE BIENVENUE (1re connexion) ================= -->
+  <div id="onboarding" hidden>
+    <div class="ob-card">
+      <div class="ob-head">
+        <img class="brand ob-logo" src="/logo.png" alt="" />
+        <div>
+          <h2>Bienvenue sur <span class="accent">Volt Support</span></h2>
+          <p class="muted">Lis ce guide en entier — après, tu sais tout faire. Tu ne le reverras plus.</p>
+        </div>
+      </div>
+      <div class="ob-body" id="obBody">
+        <div class="ob-sec"><h3>🧭 C'est quoi ce site ?</h3>
+          <p>Les clients écrivent au <b>bot Discord en message privé</b>. Toi, tu réponds <b>depuis ce site</b> : le bot relaie ta réponse dans le MP du client, préfixée de ton pseudo. Ton accès dépend de ton <b>rôle Discord</b> — si on te le retire, l'accès est coupé.</p></div>
+
+        <div class="ob-sec"><h3>🎫 Les tickets</h3>
+          <p>Colonne de gauche = la liste, <b>groupée par catégorie</b> (clique un titre pour replier). Clique un ticket pour l'ouvrir. En haut : filtres <b>Ouverts / À traiter / Non assignés / Clôturés / Tous</b>, une recherche (nom, message, ID) et des filtres avancés (assigné, priorité).</p></div>
+
+        <div class="ob-sec"><h3>💬 Répondre au client</h3>
+          <p>Écris en bas, <b>Entrée</b> = envoyer, <b>Maj+Entrée</b> = saut de ligne. <b>📎</b> = envoyer un fichier au client. <b>Ctrl+V</b> = coller une image directement.</p></div>
+
+        <div class="ob-sec"><h3>📝 Note interne</h3>
+          <p>Coche <b>« Note interne »</b> avant d'envoyer : le message est visible <b>uniquement par le staff</b>, jamais par le client. C'est le chat interne du ticket (infos, contexte…).</p></div>
+
+        <div class="ob-sec"><h3>🙋 Prendre en charge</h3>
+          <p>Bouton <b>« Prendre »</b> → le ticket est à toi (🔒). <b>« Lâcher »</b> pour le libérer. Répondre le prend automatiquement. Un ticket <b>fermé</b> est relâché tout seul. Un ticket pris par un <b>grade au-dessus de toi</b> ne peut pas t'être retiré.</p></div>
+
+        <div class="ob-sec"><h3>✏️ Renommer · Priorité · Catégorie</h3>
+          <p><b>✏️</b> pour donner un titre au ticket. Menu <b>Priorité</b> (basse → urgente, les urgents remontent). Menu <b>Catégorie</b> pour le classer.</p></div>
+
+        <div class="ob-sec"><h3>⬆️ Escalade</h3>
+          <p>Si tu ne peux pas gérer, <b>monte le ticket d'un niveau</b> : les grades en dessous <b>perdent l'accès</b> au contenu, un responsable prend la suite.</p></div>
+
+        <div class="ob-sec"><h3>📣 Demander un rôle sur un ticket</h3>
+          <p>Menu <b>🙋 « Demander… »</b> dans l'en-tête : tu appelles un responsable précis (ex : Resp Illegal). Il reçoit une <b>grosse alerte</b> sur le ticket + une notif. La demande se referme dès qu'un membre du rôle prend le ticket.</p></div>
+
+        <div class="ob-sec"><h3>⏱ Attente & minuteur</h3>
+          <p>Chaque ticket indique s'il attend <b>le staff</b> (⏱ minuteur, rouge si trop long) ou <b>le client</b>. Le filtre <b>« À traiter »</b> ne montre que ceux qui attendent une réponse.</p></div>
+
+        <div class="ob-sec"><h3>👤 Fiche membre · ⬇ Transcript</h3>
+          <p><b>👤</b> = fiche du client (1er contact, nb de messages, staff ayant répondu, blacklist…). <b>⬇</b> = télécharger toute la conversation en fichier.</p></div>
+
+        <div class="ob-sec"><h3>📇 Membres du serveur</h3>
+          <p>Onglet <b>📇</b> : tous les membres Discord + leurs rôles, recherche par pseudo ou rôle, bouton <b>✉️ MP</b> pour qu'un message parte au nom du bot (convocation, avertissement…).</p></div>
+
+        <div class="ob-sec"><h3>👥 Équipe & ton statut</h3>
+          <p>Onglet <b>👥</b> : qui est connecté, avec son rôle. En bas de l'écran, choisis ton statut : <b>🟢 Présent · 🔴 Occupé · ⚪ Absent</b>. Après <b>10 min</b> sans bouger la souris, tu passes automatiquement en <b>🟠 inactif</b>.</p></div>
+
+        <div class="ob-sec"><h3>🎨 Ton apparence</h3>
+          <p>Onglet <b>⚙️ → « Mon apparence »</b> : choisis ton thème (sombre, noir, ardoise, <b>clair</b>) et ta couleur — <b>visible par toi seul</b>, gardé sur ton compte.</p></div>
+
+        <div class="ob-sec"><h3>💡 Suggestions · 🐞 Report · 📃 Notes de version</h3>
+          <p><b>💡</b> une idée d'amélioration. <b>🐞</b> un bug ou un truc cassé → signale-le. <b>📃</b> la liste de tout ce qui a changé à chaque mise à jour.</p></div>
+
+        <div class="ob-sec"><h3>🛡️ Responsables</h3>
+          <p>Si tu es responsable/admin, l'onglet <b>🛡️ Modération</b> te sert à publier des annonces et à gérer les sanctions du staff.</p></div>
+
+        <div class="ob-sec ob-rules"><h3>✅ Les règles</h3>
+          <ul>
+            <li>Réponds vite, reste correct et pro.</li>
+            <li>Infos sensibles → <b>note interne</b>, jamais en clair au client.</li>
+            <li>Ne partage jamais le contenu des MP en dehors du staff.</li>
+            <li>Un doute sur un ticket ? Demande le bon responsable plutôt que de bloquer.</li>
+          </ul>
+        </div>
+
+        <div class="ob-end">🎉 Tu as tout lu. Coche la case en bas pour accéder au site.</div>
+      </div>
+      <div class="ob-foot">
+        <label class="ob-check"><input type="checkbox" id="obAgree" disabled /> J'ai lu et compris</label>
+        <span id="obHint" class="muted">⏳ Prends le temps de lire…</span>
+        <button id="obGo" class="btn-accent" disabled>Accéder au site</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= CONNEXION ================= -->
   <div id="login">
     <div class="embers" aria-hidden="true">
@@ -64,6 +139,7 @@
       <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Équipe en ligne</span></button>
       <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membres du serveur</span></button>
       <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestions</span></button>
+      <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Signaler un bug</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
       <button class="navbtn hidden" id="modNav" data-view="mod"><span>🛡️</span><span class="tip">Modération</span></button>
@@ -210,6 +286,21 @@
         <div id="sugList" class="hidden"></div>
       </section>
 
+      <!-- ---- Signaler un bug / problème ---- -->
+      <section id="viewReport" class="view">
+        <div class="stats-head"><h2>🐞 Signaler un bug</h2></div>
+        <p class="muted">Un truc cassé, un affichage bizarre, une erreur ? Décris-le, l'équipe le verra.</p>
+        <label class="setline" style="max-width:620px">Type
+          <select id="repKind">
+            <option value="bug">Bug (quelque chose ne marche pas)</option>
+            <option value="autre">Autre problème / remarque</option>
+          </select>
+        </label>
+        <textarea id="repText" rows="4" placeholder="Décris ce qui se passe : sur quel écran, ce que tu faisais, ce qui devait arriver…"></textarea>
+        <div class="mm-actions"><button id="repSend" class="btn-accent" type="button">Envoyer</button><span id="repStatus" class="who"></span></div>
+        <div id="repList" class="hidden"></div>
+      </section>
+
       <!-- ---- Membres du serveur ---- -->
       <section id="viewMembers" class="view">
         <div class="stats-head"><h2>📇 Membres du serveur</h2><span id="memCount" class="who"></span></div>
@@ -313,6 +404,12 @@
               <p class="muted">IDs Discord. Le salon annonces reçoit tes annonces ; le salon sanctions garde une trace de chaque sanction.</p>
               <label class="setline">Salon annonces <input type="text" id="setAnnounceChan" placeholder="ID du salon" /></label>
               <label class="setline">Salon sanctions <input type="text" id="setSanctionChan" placeholder="ID du salon" /></label>
+              <label class="setline">Salon bugs / reports <input type="text" id="setReportChan" placeholder="ID du salon" /></label>
+            </div>
+            <div class="setgrp">
+              <h4>Guide de bienvenue</h4>
+              <p class="muted">Le guide s'affiche à la 1re connexion de chaque staff et il est obligé de le lire. Tu peux le revoir :</p>
+              <button id="obReview" class="linkbtn" type="button">Revoir le guide</button>
             </div>
             <div class="setgrp">
               <h4>Responsables par catégorie</h4>

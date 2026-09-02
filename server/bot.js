@@ -25,6 +25,7 @@ import {
   setTicketRating,
   effectiveAnnounceChannel,
   effectiveSanctionChannel,
+  effectiveReportChannel,
   setTicketCategory,
   getTicket,
 } from './db.js';
@@ -484,6 +485,25 @@ export async function postSanction({ targetId, targetName, reason, byName, count
     await ch.send({ embeds: [embed], allowedMentions: { users: [] } });
   } catch (err) {
     console.error('[bot] trace sanction échouée :', err?.message || err);
+  }
+}
+
+// Trace un signalement (bug / problème) dans le salon dédié.
+export async function postReport({ byName, kind, text }) {
+  const channelId = effectiveReportChannel();
+  if (!channelId) return;
+  try {
+    const ch = await bot.channels.fetch(channelId);
+    if (!ch || !ch.isTextBased()) return;
+    const embed = new EmbedBuilder()
+      .setTitle(kind === 'bug' ? '🐞 Bug signalé' : '⚠ Problème signalé')
+      .setDescription(String(text).slice(0, 4000))
+      .setColor(kind === 'bug' ? 0xff5f5f : 0xff9d00)
+      .setFooter({ text: `par ${byName || 'staff'}` })
+      .setTimestamp(new Date());
+    await ch.send({ embeds: [embed] });
+  } catch (err) {
+    console.error('[bot] trace signalement échouée :', err?.message || err);
   }
 }
 

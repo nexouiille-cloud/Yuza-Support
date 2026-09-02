@@ -10,6 +10,7 @@ import {
   sendRatingRequest,
   postAnnouncement,
   postSanction,
+  postReport,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -59,6 +60,13 @@ import {
   isStaffBanned,
   recordLogin,
   listFirstSeen,
+  addReport,
+  listReports,
+  setReportDone,
+  deleteReport,
+  isOnboarded,
+  setOnboarded,
+  resetOnboarded,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -267,6 +275,7 @@ export function registerGateway(app) {
         assignRoles: effectiveAssignRoles(),
         slaMinutes: effectiveSla(),
         appearance: getUserTheme(session.uid),
+        onboarded: isOnboarded(session.uid),
       });
       send(entry, { type: 'categories', categories: effectiveCategories() });
       send(entry, {
@@ -414,6 +423,9 @@ export function registerGateway(app) {
         }
         if (typeof p.sanctionChannelId === 'string') {
           patch.sanctionChannelId = p.sanctionChannelId.trim();
+        }
+        if (typeof p.reportChannelId === 'string') {
+          patch.reportChannelId = p.reportChannelId.trim();
         }
         if (Array.isArray(p.categoryRoles)) {
           patch.categoryRoles = p.categoryRoles
@@ -603,6 +615,44 @@ export function registerGateway(app) {
         for (const c of clients) {
           if (c.isOwner) send(c, { type: 'suggestions', list: listSuggestions() });
         }
+        return;
+      }
+
+      /* ---- signalements (bugs / problèmes) ---- */
+      if (msg.type === 'report') {
+        const text = String(msg.text || '').trim();
+        if (!text) return;
+        addReport(session.uid, session.name, text, msg.kind);
+        postReport({ byName: session.name, kind: msg.kind, text });
+        for (const c of clients) {
+          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
+        }
+        send(entry, { type: 'report_ok' });
+        return;
+      }
+      if (msg.type === 'get_reports') {
+        if (!entry.canModerate) return;
+        send(entry, { type: 'reports', list: listReports() });
+        return;
+      }
+      if (msg.type === 'report_done' || msg.type === 'report_del') {
+        if (!entry.canModerate) return;
+        if (msg.type === 'report_del') deleteReport(msg.id | 0);
+        else setReportDone(msg.id | 0, !!msg.done);
+        for (const c of clients) {
+          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
+        }
+        return;
+      }
+
+      /* ---- guide de bienvenue (lu) ---- */
+      if (msg.type === 'onboarding_done') {
+        setOnboarded(session.uid);
+        return;
+      }
+      if (msg.type === 'onboarding_reset') {
+        resetOnboarded(session.uid); // pour soi-même : revoir le guide
+        send(entry, { type: 'show_onboarding' });
         return;
       }
 
@@ -993,6 +1043,7 @@ export function registerGateway(app) {
             assignRoles: effectiveAssignRoles(),
             slaMinutes: effectiveSla(),
             appearance: getUserTheme(c.session.uid),
+            onboarded: isOnboarded(c.session.uid),
           });
           send(c, { type: 'tickets', tickets: visibleTickets(level) });
           changed = true;

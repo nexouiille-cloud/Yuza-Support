@@ -244,7 +244,54 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
   if (name === 'mod' && ws && ws.readyState === 1 && canModerate)
     ws.send(JSON.stringify({ type: 'get_sanctions' }));
+  if (name === 'report' && ws && ws.readyState === 1 && canModerate)
+    ws.send(JSON.stringify({ type: 'get_reports' }));
   if (name === 'patch') loadPatchNotes();
+}
+
+/* ---------------- guide de bienvenue (obligé de lire) ---------------- */
+let obSeen = false;
+function showOnboarding(force) {
+  const ob = $('#onboarding');
+  const body = $('#obBody');
+  const agree = $('#obAgree');
+  const go = $('#obGo');
+  const hint = $('#obHint');
+  if (!ob) return;
+  ob.hidden = false;
+  agree.checked = false;
+  agree.disabled = true;
+  go.disabled = true;
+  body.scrollTop = 0;
+  const opened = Date.now();
+  const MIN_MS = 25000; // temps de lecture minimum
+  let scrolledEnd = false;
+  const atBottom = () => body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  const check = () => {
+    if (atBottom()) scrolledEnd = true;
+    const left = Math.ceil((MIN_MS - (Date.now() - opened)) / 1000);
+    if (!scrolledEnd) {
+      hint.textContent = '⬇ Fais défiler le guide jusqu\'en bas';
+      agree.disabled = true;
+    } else if (left > 0) {
+      hint.textContent = `⏳ Encore ${left}s de lecture…`;
+      agree.disabled = true;
+    } else {
+      hint.textContent = 'Coche la case pour continuer';
+      agree.disabled = false;
+    }
+    go.disabled = !(agree.checked && !agree.disabled);
+  };
+  body.addEventListener('scroll', check);
+  const iv = setInterval(check, 1000);
+  check();
+  agree.onchange = check;
+  go.onclick = () => {
+    clearInterval(iv);
+    body.removeEventListener('scroll', check);
+    ob.hidden = true;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'onboarding_done' }));
+  };
 }
 
 /* ---------------- notes de version ---------------- */
@@ -300,6 +347,42 @@ function renderSugList(list) {
     el.querySelector('.si-del').addEventListener('click', () => {
       if (window.confirm('Supprimer cette suggestion ?'))
         ws.send(JSON.stringify({ type: 'suggestion_del', id: s.id }));
+    });
+    box.appendChild(el);
+  }
+}
+
+/* ---------------- signalements (bugs) ---------------- */
+$('#repSend').addEventListener('click', () => {
+  const text = $('#repText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#repSend').disabled = true;
+  $('#repStatus').textContent = 'envoi…';
+  ws.send(JSON.stringify({ type: 'report', text, kind: $('#repKind').value }));
+});
+function renderReports(list) {
+  const box = $('#repList');
+  box.classList.toggle('hidden', !canModerate);
+  if (!canModerate) return;
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Aucun signalement.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const r of list) {
+    const el = document.createElement('div');
+    el.className = 'sug-item' + (r.done ? ' done' : '');
+    el.innerHTML =
+      `<div class="si-main"><span class="rep-tag ${r.kind}">${r.kind === 'bug' ? '🐞 bug' : '⚠ autre'}</span> ${esc(r.text)}` +
+      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}</div></div>` +
+      `<div class="si-btns"><button class="linkbtn si-done" type="button">${r.done ? '↩' : '✓'}</button>` +
+      `<button class="linkbtn si-del" type="button">🗑</button></div>`;
+    el.querySelector('.si-done').addEventListener('click', () =>
+      ws.send(JSON.stringify({ type: 'report_done', id: r.id, done: !r.done })),
+    );
+    el.querySelector('.si-del').addEventListener('click', () => {
+      if (window.confirm('Supprimer ce signalement ?'))
+        ws.send(JSON.stringify({ type: 'report_del', id: r.id }));
     });
     box.appendChild(el);
   }
@@ -676,6 +759,12 @@ function handle(m) {
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
       playIntro();
+      if (m.onboarded === false && !obSeen) {
+        obSeen = true;
+        const start = () => showOnboarding();
+        if (introShown && $('#intro').hidden) start();
+        else setTimeout(start, 2700); // laisse l'intro se jouer d'abord
+      }
       setConn('ok');
       setupNotifs();
       setStatus(`${m.name} · ${myRoleName || myLevelLabel}`);
@@ -824,6 +913,20 @@ function handle(m) {
 
     case 'logins':
       renderLogins(m.list || [], m.online || []);
+      break;
+
+    case 'reports':
+      renderReports(m.list || []);
+      break;
+
+    case 'report_ok':
+      $('#repText').value = '';
+      $('#repStatus').textContent = '✓ envoyé, merci !';
+      $('#repSend').disabled = false;
+      break;
+
+    case 'show_onboarding':
+      showOnboarding(true);
       break;
 
     case 'announced':
@@ -1381,6 +1484,7 @@ function fillSettings(s, scope) {
   $('#setRateOn').checked = s.askRating !== false;
   $('#setAnnounceChan').value = s.announceChannelId || '';
   $('#setSanctionChan').value = s.sanctionChannelId || '';
+  $('#setReportChan').value = s.reportChannelId || '';
   renderCatRoles(s.categoryRoles || []);
 }
 
@@ -1479,6 +1583,7 @@ $('#setSave').addEventListener('click', () => {
         askRating: $('#setRateOn').checked,
         announceChannelId: $('#setAnnounceChan').value.trim(),
         sanctionChannelId: $('#setSanctionChan').value.trim(),
+        reportChannelId: $('#setReportChan').value.trim(),
         categoryRoles: gatherCatRoles(),
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
@@ -1493,6 +1598,7 @@ $('#setSave').addEventListener('click', () => {
 $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
 });
+$('#obReview').addEventListener('click', () => showOnboarding(true));
 $('#panelPublish').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;
   // on enregistre d'abord le contenu du panneau, puis on publie

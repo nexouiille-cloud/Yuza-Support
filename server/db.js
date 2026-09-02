@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {} };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {} };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -24,6 +24,8 @@ if (existsSync(FILE)) {
     data.userThemes ||= {};
     data.sanctions ||= [];
     data.firstSeen ||= {};
+    data.reports ||= [];
+    data.onboarded ||= {};
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -197,6 +199,7 @@ export function getSettings() {
     askRating: data.settings.askRating !== false,
     announceChannelId: data.settings.announceChannelId ?? null,
     sanctionChannelId: data.settings.sanctionChannelId ?? null,
+    reportChannelId: data.settings.reportChannelId ?? null,
     categoryRoles: effectiveCategoryRoles(),
   };
 }
@@ -305,6 +308,9 @@ export function effectiveAnnounceChannel() {
 export function effectiveSanctionChannel() {
   return String(data.settings.sanctionChannelId || '').trim();
 }
+export function effectiveReportChannel() {
+  return String(data.settings.reportChannelId || '').trim();
+}
 // responsables par catégorie : [{category, roleId}]
 export function effectiveCategoryRoles() {
   const a = data.settings.categoryRoles;
@@ -320,6 +326,46 @@ export function effectiveCategoryRoles() {
 }
 export function roleForCategory(category) {
   return effectiveCategoryRoles().find((r) => r.category === category)?.roleId || '';
+}
+
+/* ---------------- signalements (bugs / problèmes) ---------------- */
+export function addReport(byId, byName, text, kind) {
+  const r = {
+    id: ++data.seq,
+    by: String(byName || ''),
+    byId: String(byId || ''),
+    kind: kind === 'bug' ? 'bug' : 'autre',
+    text: String(text).slice(0, 1500),
+    at: Date.now(),
+    done: false,
+  };
+  data.reports.push(r);
+  save();
+  return r;
+}
+export function listReports() {
+  return [...data.reports].sort((a, b) => a.done - b.done || b.at - a.at);
+}
+export function setReportDone(id, done) {
+  const r = data.reports.find((x) => x.id === (id | 0));
+  if (r) { r.done = !!done; save(); }
+}
+export function deleteReport(id) {
+  const i = data.reports.findIndex((x) => x.id === (id | 0));
+  if (i !== -1) { data.reports.splice(i, 1); save(); }
+}
+
+/* ---------------- guide de bienvenue (lu / pas lu) ---------------- */
+export function isOnboarded(uid) {
+  return !!data.onboarded[String(uid)];
+}
+export function setOnboarded(uid) {
+  data.onboarded[String(uid)] = Date.now();
+  save();
+}
+export function resetOnboarded(uid) {
+  delete data.onboarded[String(uid)];
+  save();
 }
 
 /* ---------------- 1re connexion au site de chaque personne (owner) ---------------- */
