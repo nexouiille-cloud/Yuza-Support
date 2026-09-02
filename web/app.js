@@ -234,8 +234,10 @@ function showView(name) {
   if (name === 'staff') renderStaffView();
   if (name === 'stats' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'stats' }));
-  if (name === 'settings' && ws && ws.readyState === 1)
+  if (name === 'settings' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_settings' }));
+    if (settingsScope === 'owner') ws.send(JSON.stringify({ type: 'get_logins' }));
+  }
   if (name === 'members' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
   if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
@@ -818,6 +820,10 @@ function handle(m) {
 
     case 'sanctions':
       renderSanctions(m.list || []);
+      break;
+
+    case 'logins':
+      renderLogins(m.list || [], m.online || []);
       break;
 
     case 'announced':
@@ -1541,6 +1547,38 @@ function renderSanctions(list) {
       ws.send(JSON.stringify({ type: 'sanction_del', id: Number(b.dataset.id) })),
     ),
   );
+}
+
+/* ---------------- journal des connexions (owner) ---------------- */
+function ago(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  return `il y a ${Math.floor(s / 86400)} j`;
+}
+function renderLogins(list, online) {
+  const box = $('#loginList');
+  if (!box) return;
+  const on = new Set((online || []).map(String));
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Aucune connexion enregistrée.</div>';
+    return;
+  }
+  box.innerHTML = list
+    .map((l) => {
+      const live = on.has(String(l.uid));
+      return (
+        `<div class="login-item${live ? ' live' : ''}">` +
+        `<span class="lg-dot"></span>` +
+        `<span class="lg-name">${esc(l.name)}</span>` +
+        `<span class="lg-role">${esc(l.roleName || '')}</span>` +
+        `<span class="lg-when">${live ? 'en ligne' : ago(l.at)}</span>` +
+        `<span class="lg-date">${new Date(l.at).toLocaleString('fr-FR')}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
 }
 
 /* ---------------- statut de présence + inactivité ---------------- */

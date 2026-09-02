@@ -57,6 +57,8 @@ import {
   removeSanction,
   activeSanctionCount,
   isStaffBanned,
+  recordLogin,
+  listLogins,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -111,6 +113,15 @@ function presenceList() {
 }
 function broadcastPresence() {
   broadcastAll({ type: 'presence', staff: presenceList() });
+}
+
+function onlineUids() {
+  return [...new Set([...clients].filter((c) => c.ready).map((c) => c.session.uid))];
+}
+// journal des connexions -> poussé aux owners uniquement
+function pushLoginsToOwners() {
+  const payload = { type: 'logins', list: listLogins(200), online: onlineUids() };
+  for (const c of clients) if (c.ready && c.isOwner) send(c, payload);
 }
 
 // événement lié à un ticket : seulement aux staff dont le niveau suffit
@@ -265,6 +276,11 @@ export function registerGateway(app) {
         theme: effectiveTheme(),
       });
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
+      recordLogin(session.uid, session.name, entry.roleName);
+      if (entry.isOwner) {
+        send(entry, { type: 'logins', list: listLogins(200), online: onlineUids() });
+      }
+      pushLoginsToOwners(); // les autres owners voient la nouvelle connexion
       broadcastPresence();
     });
 
@@ -448,6 +464,13 @@ export function registerGateway(app) {
         } catch (e) {
           send(entry, { type: 'announced', ok: false, error: String(e?.message || e) });
         }
+        return;
+      }
+
+      /* ---- journal des connexions (owner uniquement) ---- */
+      if (msg.type === 'get_logins') {
+        if (!entry.isOwner) return;
+        send(entry, { type: 'logins', list: listLogins(200), online: onlineUids() });
         return;
       }
 
@@ -927,8 +950,8 @@ export function registerGateway(app) {
       }
     });
 
-    socket.on('close', () => { clients.delete(entry); broadcastPresence(); });
-    socket.on('error', () => { clients.delete(entry); broadcastPresence(); });
+    socket.on('close', () => { clients.delete(entry); broadcastPresence(); pushLoginsToOwners(); });
+    socket.on('error', () => { clients.delete(entry); broadcastPresence(); pushLoginsToOwners(); });
   });
 
   // Re-vérification périodique : rôle + niveau.
