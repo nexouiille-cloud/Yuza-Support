@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {} };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [] };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -22,6 +22,7 @@ if (existsSync(FILE)) {
     data.settings ||= {};
     data.suggestions ||= [];
     data.userThemes ||= {};
+    data.sanctions ||= [];
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -68,6 +69,7 @@ export function upsertTicket(userId, username, preview) {
       escalation_level: 1,
       assignee_id: null,
       assignee_name: null,
+      assignee_level: null,
       waiting: 'staff',
       last_client_at: now,
       last_staff_at: null,
@@ -82,11 +84,12 @@ export function upsertTicket(userId, username, preview) {
   return { created, reopened };
 }
 
-export function setTicketAssignee(userId, id, name) {
+export function setTicketAssignee(userId, id, name, level) {
   const t = data.tickets[userId];
   if (t) {
     t.assignee_id = id || null;
     t.assignee_name = name || null;
+    t.assignee_level = id ? level || 1 : null;
     t.updated_at = Date.now();
     save();
   }
@@ -191,6 +194,9 @@ export function getSettings() {
     flood: effectiveFlood(),
     panel: effectivePanel(),
     askRating: data.settings.askRating !== false,
+    announceChannelId: data.settings.announceChannelId ?? null,
+    sanctionChannelId: data.settings.sanctionChannelId ?? null,
+    categoryRoles: effectiveCategoryRoles(),
   };
 }
 export function updateSettings(patch) {
@@ -289,6 +295,61 @@ export function effectivePanel() {
 export function setPanelMessageId(id) {
   data.settings.panel = { ...(data.settings.panel || {}), messageId: id ? String(id) : '' };
   save();
+}
+
+/* ---------------- salons annonces / sanctions ---------------- */
+export function effectiveAnnounceChannel() {
+  return String(data.settings.announceChannelId || '').trim();
+}
+export function effectiveSanctionChannel() {
+  return String(data.settings.sanctionChannelId || '').trim();
+}
+// responsables par catégorie : [{category, roleId}]
+export function effectiveCategoryRoles() {
+  const a = data.settings.categoryRoles;
+  const cats = effectiveCategories();
+  return Array.isArray(a)
+    ? a
+        .map((r) => ({
+          category: String(r.category || '').trim(),
+          roleId: String(r.roleId || '').trim(),
+        }))
+        .filter((r) => r.category && r.roleId && cats.includes(r.category))
+    : [];
+}
+export function roleForCategory(category) {
+  return effectiveCategoryRoles().find((r) => r.category === category)?.roleId || '';
+}
+
+/* ---------------- sanctions staff (3 = plus d'accès) ---------------- */
+export function addSanction(targetId, targetName, reason, by, byName) {
+  const s = {
+    id: ++data.seq,
+    targetId: String(targetId),
+    targetName: String(targetName || targetId),
+    reason: String(reason || '').slice(0, 500),
+    by: String(by || ''),
+    byName: String(byName || ''),
+    at: Date.now(),
+    active: true,
+  };
+  data.sanctions.push(s);
+  save();
+  return s;
+}
+export function listSanctions() {
+  return [...data.sanctions].sort((a, b) => b.at - a.at);
+}
+export function removeSanction(id) {
+  const s = data.sanctions.find((x) => x.id === (id | 0));
+  if (s) { s.active = false; save(); }
+}
+export function activeSanctionCount(targetId) {
+  const id = String(targetId);
+  return data.sanctions.filter((s) => s.active && s.targetId === id).length;
+}
+export function isStaffBanned(targetId) {
+  return activeSanctionCount(targetId) >= 3;
 }
 
 /* ---------------- note de satisfaction ---------------- */

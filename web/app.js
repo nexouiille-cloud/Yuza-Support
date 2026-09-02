@@ -24,8 +24,17 @@ let vapidPublic = '';
 let staffOnly = false; // vue "staff seulement" dans la conversation
 let presence = []; // staff en ligne
 let myRoles = []; // mes rôles Discord (IDs)
+let myRoleName = ''; // mon rôle Discord (nom, affiché)
+let canModerate = false; // owner ou grade max : annonces + sanctions
 let assignRoles = []; // rôles demandables : [{name, roleId}]
 let slaMin = 15; // seuil d'alerte SLA (minutes)
+
+// signature — merci de la laisser
+console.log(
+  '%cVolt Support%c — développé par Yuza',
+  'color:#ff9d00;font-weight:700;font-size:14px',
+  'color:#9d968d',
+);
 
 const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
 const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -210,6 +219,32 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
   if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
+  if (name === 'mod' && ws && ws.readyState === 1 && canModerate)
+    ws.send(JSON.stringify({ type: 'get_sanctions' }));
+  if (name === 'patch') loadPatchNotes();
+}
+
+/* ---------------- notes de version ---------------- */
+let patchLoaded = false;
+async function loadPatchNotes() {
+  if (patchLoaded) return;
+  try {
+    const r = await fetch('/patchnotes.json', { cache: 'no-cache' });
+    const list = r.ok ? await r.json() : [];
+    $('#patchList').innerHTML = list.length
+      ? list
+          .map(
+            (p) =>
+              `<div class="patch"><div class="patch-h"><strong>${esc(p.title)}</strong>` +
+              `<span class="patch-d">${esc(p.date)}</span></div>` +
+              `<ul>${(p.items || []).map((it) => `<li>${esc(it)}</li>`).join('')}</ul></div>`,
+          )
+          .join('')
+      : '<div class="muted">Aucune note pour l\'instant.</div>';
+    patchLoaded = true;
+  } catch {
+    $('#patchList').innerHTML = '<div class="muted">Impossible de charger les notes.</div>';
+  }
 }
 
 /* ---------------- suggestions ---------------- */
@@ -304,22 +339,29 @@ $('#dmSend').addEventListener('click', () => {
   ws.send(JSON.stringify({ type: 'dm_member', userId: dmTarget.id, text }));
 });
 
+const ST_LABEL = { online: 'présent', busy: 'occupé', away: 'absent', idle: 'inactif' };
+function statusOf(s) {
+  return ['online', 'busy', 'away', 'idle'].includes(s?.status) ? s.status : 'online';
+}
 function renderStaffView() {
   const box = $('#staffList');
   if (!box) return;
-  $('#staffCount').textContent =
-    presence.length + ' en ligne';
+  $('#staffCount').textContent = presence.length + ' en ligne';
   if (!presence.length) {
     box.innerHTML = '<div class="muted">Personne d\'autre n\'est connecté.</div>';
     return;
   }
   box.innerHTML = presence
-    .map(
-      (s) =>
-        `<div class="staff-item"><span class="sdot"></span>` +
-        `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}</span>` +
-        `<span class="srole">${esc(levelName(s.level))}</span></div>`,
-    )
+    .map((s) => {
+      const st = statusOf(s);
+      const role = s.roleName || levelName(s.level);
+      return (
+        `<div class="staff-item"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
+        `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}` +
+        `<span class="sst">${ST_LABEL[st]}</span></span>` +
+        `<span class="srole">${esc(role)}</span></div>`
+      );
+    })
     .join('');
 }
 
@@ -384,7 +426,11 @@ function renderPresence() {
   box.innerHTML =
     `<span class="who-lbl">${presence.length} en ligne&nbsp;:</span>` +
     presence
-      .map((s) => `<span class="who-chip">${esc(s.name)}</span>`)
+      .map(
+        (s) =>
+          `<span class="who-chip st-${statusOf(s)}">${esc(s.name)}` +
+          `<span class="wc-role">${esc(s.roleName || levelName(s.level))}</span></span>`,
+      )
       .join('');
   $('#statusPresence').textContent = presence.length
     ? `${presence.length} staff en ligne`
@@ -584,6 +630,11 @@ function handle(m) {
       (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
       presence = m.staff || presence;
       if (Array.isArray(m.roles)) myRoles = m.roles.map(String);
+      if (m.roleName !== undefined) myRoleName = m.roleName || '';
+      if (m.canModerate !== undefined) {
+        canModerate = !!m.canModerate;
+        $('#modNav').classList.toggle('hidden', !canModerate);
+      }
       if (Array.isArray(m.assignRoles)) assignRoles = m.assignRoles;
       if (m.slaMinutes) slaMin = m.slaMinutes;
       if (m.appearance !== undefined) {
@@ -603,7 +654,7 @@ function handle(m) {
       $('#app').classList.add('on');
       setConn('ok');
       setupNotifs();
-      setStatus(`${m.name} · ${myLevelLabel}`);
+      setStatus(`${m.name} · ${myRoleName || myLevelLabel}`);
       renderPresence();
       renderSidebar();
       renderHome();
@@ -728,13 +779,49 @@ function handle(m) {
       $('#app').classList.remove('on');
       $('#login').classList.remove('hidden');
       $('#loginMsg').textContent =
-        'Ton rôle staff a été retiré : accès révoqué.';
+        m.reason === 'sanctioned'
+          ? "Accès retiré : 3 sanctions ont été enregistrées sur ton compte."
+          : 'Ton rôle staff a été retiré : accès révoqué.';
       if (ws) ws.close();
       break;
 
     case 'error':
-      setStatus(`session invalide (${m.reason}) — recharge la page`);
+      if (m.reason === 'assignee_higher') {
+        setStatus('Impossible : ce ticket est pris par un grade supérieur.');
+        if (current) syncHeader();
+      } else {
+        setStatus(`session invalide (${m.reason}) — recharge la page`);
+      }
       break;
+
+    case 'sanctions':
+      renderSanctions(m.list || []);
+      break;
+
+    case 'announced':
+      $('#annStatus').textContent = m.ok
+        ? '✓ annonce publiée'
+        : m.error === 'forbidden'
+          ? 'réservé aux hauts gradés'
+          : `échec : ${m.error || '?'}`;
+      if (m.ok) $('#annText').value = '';
+      $('#annSend').disabled = false;
+      break;
+
+    case 'category_assigned': {
+      setStatus(`📂 ${m.by} t'a passé un ticket « ${m.category} » — ${m.ticketName}`);
+      const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+      if (row) row.classList.add('flash');
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const n = new Notification(`📂 Ticket « ${m.category} »`, {
+            body: `${m.by} — ${m.ticketName}`,
+          });
+          n.onclick = () => { window.focus(); showView('tickets'); openTicket(m.userId); };
+        }
+      } catch {}
+      break;
+    }
 
     case 'categories':
       categories = Array.isArray(m.categories) ? m.categories : [];
@@ -1097,13 +1184,18 @@ function syncHeader() {
   block.textContent = bl ? '✅ Débloquer' : '🚫 Bloquer';
 
   const take = $('#takeBtn');
-  take.classList.toggle('hidden', !t);
+  // pris par un grade supérieur -> je ne peux pas le lui retirer
+  const lockedByHigher = !!(
+    t && t.assignee_id && !mine && (t.assignee_level || 1) > myLevel
+  );
+  take.classList.toggle('hidden', !t || lockedByHigher);
   take.classList.toggle('mine', mine);
   take.textContent = mine
     ? 'Lâcher'
     : t && t.assignee_id
       ? 'Reprendre'
       : 'Prendre';
+  $('#takeLock').classList.toggle('hidden', !lockedByHigher);
 
   const cat = $('#catSelect');
   cat.classList.toggle('hidden', !t);
@@ -1259,6 +1351,29 @@ function fillSettings(s, scope) {
   $('#panelDesc').value = pn.description || '';
   $('#panelStatus').textContent = pn.messageId ? 'panneau publié' : '';
   $('#setRateOn').checked = s.askRating !== false;
+  $('#setAnnounceChan').value = s.announceChannelId || '';
+  $('#setSanctionChan').value = s.sanctionChannelId || '';
+  renderCatRoles(s.categoryRoles || []);
+}
+
+/* responsables par catégorie : une ligne (catégorie -> ID rôle) */
+function renderCatRoles(rows) {
+  const box = $('#setCatRoles');
+  if (!box) return;
+  const map = {};
+  (rows || []).forEach((r) => { map[r.category] = r.roleId; });
+  box.innerHTML = categories
+    .map(
+      (c) =>
+        `<label class="setline"><span style="flex:0;min-width:140px">${esc(c)}</span>` +
+        `<input type="text" class="catrole" data-cat="${esc(c)}" placeholder="ID du rôle" value="${esc(map[c] || '')}" /></label>`,
+    )
+    .join('') || '<p class="muted">Ajoute des catégories d\'abord.</p>';
+}
+function gatherCatRoles() {
+  return [...document.querySelectorAll('#setCatRoles .catrole')]
+    .map((i) => ({ category: i.dataset.cat, roleId: i.value.trim() }))
+    .filter((r) => r.roleId);
 }
 
 function roleRow(name, rid) {
@@ -1334,6 +1449,9 @@ $('#setSave').addEventListener('click', () => {
           description: $('#panelDesc').value.trim(),
         },
         askRating: $('#setRateOn').checked,
+        announceChannelId: $('#setAnnounceChan').value.trim(),
+        sanctionChannelId: $('#setSanctionChan').value.trim(),
+        categoryRoles: gatherCatRoles(),
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
           accent: $('#setAccent').value,
@@ -1353,6 +1471,94 @@ $('#panelPublish').addEventListener('click', () => {
   $('#setSave').click();
   $('#panelStatus').textContent = 'publication…';
   ws.send(JSON.stringify({ type: 'publish_panel' }));
+});
+
+/* ---------------- modération : annonces + sanctions ---------------- */
+$('#annSend').addEventListener('click', () => {
+  const text = $('#annText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#annSend').disabled = true;
+  $('#annStatus').textContent = 'publication…';
+  ws.send(JSON.stringify({ type: 'announce', text }));
+});
+$('#sancAdd').addEventListener('click', () => {
+  const targetId = $('#sancId').value.trim();
+  const targetName = $('#sancName').value.trim();
+  const reason = $('#sancReason').value.trim();
+  if (!targetId || !ws || ws.readyState !== 1) return;
+  if (!window.confirm(`Ajouter une sanction à ${targetName || targetId} ?`)) return;
+  ws.send(JSON.stringify({ type: 'sanction_add', targetId, targetName, reason }));
+  $('#sancId').value = $('#sancName').value = $('#sancReason').value = '';
+});
+function renderSanctions(list) {
+  const box = $('#sancList');
+  if (!box) return;
+  const counts = {};
+  list.filter((s) => s.active).forEach((s) => { counts[s.targetId] = (counts[s.targetId] || 0) + 1; });
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Aucune sanction.</div>';
+    return;
+  }
+  box.innerHTML = list
+    .map((s) => {
+      const c = counts[s.targetId] || 0;
+      return (
+        `<div class="sanc-item${s.active ? '' : ' off'}${c >= 3 && s.active ? ' banned' : ''}">` +
+        `<div class="si-main"><strong>${esc(s.targetName)}</strong> ` +
+        `<span class="si-count">${c}/3</span>` +
+        `<div class="si-by">${esc(s.reason || 'sans raison')} — par ${esc(s.byName)} · ${new Date(s.at).toLocaleString('fr-FR')}</div></div>` +
+        (s.active
+          ? `<button class="linkbtn sc-del" data-id="${s.id}" type="button">retirer</button>`
+          : '<span class="muted">retirée</span>') +
+        `</div>`
+      );
+    })
+    .join('');
+  box.querySelectorAll('.sc-del').forEach((b) =>
+    b.addEventListener('click', () =>
+      ws.send(JSON.stringify({ type: 'sanction_del', id: Number(b.dataset.id) })),
+    ),
+  );
+}
+
+/* ---------------- statut de présence + inactivité ---------------- */
+let manualStatus = 'online';
+let idle = false;
+let lastActive = Date.now();
+function pushStatus() {
+  if (!ws || ws.readyState !== 1) return;
+  const eff = manualStatus !== 'online' ? manualStatus : idle ? 'idle' : 'online';
+  ws.send(JSON.stringify({ type: 'set_status', status: eff }));
+}
+$('#myStatus').addEventListener('change', (e) => {
+  manualStatus = e.target.value;
+  pushStatus();
+});
+['mousemove', 'keydown', 'pointerdown', 'touchstart', 'wheel'].forEach((ev) =>
+  window.addEventListener(
+    ev,
+    () => {
+      lastActive = Date.now();
+      if (idle) { idle = false; pushStatus(); }
+    },
+    { passive: true },
+  ),
+);
+setInterval(() => {
+  const now = Date.now();
+  const nextIdle = now - lastActive > 600000; // 10 min sans activité
+  if (nextIdle !== idle) { idle = nextIdle; pushStatus(); }
+}, 30000);
+
+// Ctrl+V d'une image n'importe où quand un ticket est ouvert
+document.addEventListener('paste', (e) => {
+  if (e.defaultPrevented || !current) return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'TEXTAREA') return; // laisse coller le texte dans les zones de texte
+  const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith('image/'));
+  if (!item) return;
+  e.preventDefault();
+  uploadAttachment(item.getAsFile());
 });
 
 /* ---------------- mon apparence (perso, visible par moi seul) ---------------- */

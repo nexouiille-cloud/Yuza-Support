@@ -33,10 +33,12 @@
       <span style="left:35%;animation-duration:6s;animation-delay:5.6s;--dx:-40px"></span>
     </div>
 
-    <img class="brand logo-xl" src="/logo.png" alt="Volt Support" />
+    <img class="brand logo-xl" src="/logo.png" alt="Volt Support" onerror="this.classList.add('logo-missing')" />
     <h1>Volt <span class="accent">Support</span></h1>
     <p id="loginMsg">Connecte-toi avec Discord pour accéder aux tickets.</p>
     <a id="loginBtn" class="btn-accent pulse" href="/auth/login">Se connecter avec Discord</a>
+    <!-- Volt Support — développé par Yuza. Merci de laisser cette signature. -->
+    <p class="credit">développé par <strong>Yuza</strong></p>
   </div>
 
   <!-- ================= APPLICATION ================= -->
@@ -49,6 +51,8 @@
       <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membres du serveur</span></button>
       <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestions</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
+      <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
+      <button class="navbtn hidden" id="modNav" data-view="mod"><span>🛡️</span><span class="tip">Modération</span></button>
       <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Réglages</span></button>
       <span class="spacer"></span>
       <button class="navbtn" id="notifBtn" title="Activer les notifications"><span>🔔</span><span class="tip">Notifications</span></button>
@@ -153,6 +157,7 @@
             </select>
             <button id="blockBtn" class="hidden" title="Empêcher ce client d'ouvrir des tickets">🚫 Bloquer</button>
             <button id="takeBtn" class="hidden">Prendre</button>
+            <span id="takeLock" class="hidden" title="Un grade supérieur s'en occupe">🔒 pris par un grade supérieur</span>
             <select id="escSelect" class="hidden" title="Niveau du ticket / escalade"></select>
             <select id="catSelect" class="hidden" title="Catégorie du ticket"></select>
             <button id="closeBtn" class="hidden">Clôturer</button>
@@ -285,12 +290,23 @@
               <label class="setline"><input type="checkbox" id="setRateOn" /> Demander au client une note de 1 à 5 après la clôture d'un ticket</label>
             </div>
             <div class="setgrp">
+              <h4>Salons Discord — annonces & sanctions</h4>
+              <p class="muted">IDs Discord. Le salon annonces reçoit tes annonces ; le salon sanctions garde une trace de chaque sanction.</p>
+              <label class="setline">Salon annonces <input type="text" id="setAnnounceChan" placeholder="ID du salon" /></label>
+              <label class="setline">Salon sanctions <input type="text" id="setSanctionChan" placeholder="ID du salon" /></label>
+            </div>
+            <div class="setgrp">
+              <h4>Responsables par catégorie</h4>
+              <p class="muted">Quand un ticket est classé dans une catégorie, les membres du rôle indiqué reçoivent une notif. Laisse vide pour ne pas notifier.</p>
+              <div id="setCatRoles"></div>
+            </div>
+            <div class="setgrp hidden">
               <h4>Fermeture automatique des tickets inactifs</h4>
               <label class="setline"><input type="checkbox" id="setAcOn" /> Activer</label>
               <label class="setline">Relancer le client après <input type="number" id="setAcWarn" min="1" style="width:70px;flex:0" /> h sans réponse</label>
               <label class="setline">Fermer après <input type="number" id="setAcClose" min="1" style="width:70px;flex:0" /> h sans réponse</label>
             </div>
-            <div class="setgrp">
+            <div class="setgrp hidden">
               <h4>Anti-flood (spam de MP)</h4>
               <label class="setline"><input type="checkbox" id="setFlOn" /> Activer</label>
               <label class="setline">Seuil : <input type="number" id="setFlCount" min="2" style="width:60px;flex:0" /> messages en <input type="number" id="setFlWin" min="3" style="width:60px;flex:0" /> s → mise en pause <input type="number" id="setFlMute" min="1" style="width:60px;flex:0" /> min</label>
@@ -317,11 +333,51 @@
         <div id="statsBody"></div>
       </section>
 
+      <!-- ---- Notes de version ---- -->
+      <section id="viewPatch" class="view">
+        <div class="stats-head"><h2>📃 Notes de version</h2></div>
+        <p class="muted">Ce qui a été ajouté ou corrigé, au fil des mises à jour.</p>
+        <div id="patchList"><div class="muted">Chargement…</div></div>
+      </section>
+
+      <!-- ---- Modération (annonces + sanctions) ---- -->
+      <section id="viewMod" class="view">
+        <div class="stats-head"><h2>🛡️ Modération</h2></div>
+
+        <div class="setgrp">
+          <h4>📢 Publier une annonce</h4>
+          <p class="muted">Envoyée dans le salon annonces configuré dans les Réglages.</p>
+          <textarea id="annText" rows="4" placeholder="Ton annonce…"></textarea>
+          <div class="mm-actions">
+            <button id="annSend" class="btn-accent" type="button">Publier l'annonce</button>
+            <span id="annStatus" class="who"></span>
+          </div>
+        </div>
+
+        <div class="setgrp">
+          <h4>⚠ Sanctions du staff</h4>
+          <p class="muted">3 sanctions actives = accès au site retiré pour la personne.</p>
+          <div class="sanction-add">
+            <input type="text" id="sancId" placeholder="ID Discord du staff" />
+            <input type="text" id="sancName" placeholder="Pseudo" />
+            <input type="text" id="sancReason" placeholder="Raison" />
+            <button id="sancAdd" class="btn-accent" type="button">Sanctionner</button>
+          </div>
+          <div id="sancList"></div>
+        </div>
+      </section>
+
       <div id="status">
         <span class="dot" id="connDot"></span>
         <span id="statusText">chargement…</span>
+        <select id="myStatus" title="Ton statut de présence">
+          <option value="online">🟢 Présent</option>
+          <option value="busy">🔴 Occupé</option>
+          <option value="away">⚪ Absent</option>
+        </select>
         <span class="sp"></span>
         <span id="statusPresence"></span>
+        <span class="credit-mini">by Yuza</span>
       </div>
 
     </div>

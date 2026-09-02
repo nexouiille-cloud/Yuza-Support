@@ -334,7 +334,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #attachBtn { font-size: 15px; padding: 8px 11px; }
 
 /* ---------- vue stats ---------- */
-#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
+#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
 #sugText { width: 100%; max-width: 620px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
 #sugText:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
 #sugList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; margin-top: 26px; }
@@ -457,24 +457,74 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* bouton « retour à la liste » : mobile uniquement */
 #backToList { display: none; }
 
+/* ---------- signature ---------- */
+.credit { color: var(--text-faint); font-size: 12px; margin-top: 18px; letter-spacing: .3px; }
+.credit strong { color: var(--accent-bright); }
+.credit-mini { color: var(--text-faint); font-size: 11px; opacity: .8; }
+#takeLock { font-size: 11px; color: var(--text-faint); }
+
+/* ---------- statut de présence ---------- */
+#myStatus {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+  font: inherit; font-size: 11px; border-radius: 7px; padding: 3px 6px;
+}
+.sdot.st-online, .who-chip.st-online::before { background: var(--ok); box-shadow: 0 0 6px 1px rgba(67,209,98,.5); }
+.sdot.st-idle,   .who-chip.st-idle::before   { background: #ffa93d; box-shadow: 0 0 6px 1px rgba(255,169,61,.5); }
+.sdot.st-busy,   .who-chip.st-busy::before   { background: var(--danger); box-shadow: 0 0 6px 1px rgba(255,95,95,.5); }
+.sdot.st-away,   .who-chip.st-away::before   { background: var(--text-faint); box-shadow: none; }
+.staff-item .sname { display: flex; align-items: center; gap: 8px; }
+.staff-item .sst { font-size: 11px; color: var(--text-faint); text-transform: lowercase; }
+#presence .who-chip .wc-role { color: var(--text-faint); font-size: 11px; border-left: 1px solid var(--border-strong); padding-left: 6px; }
+
+/* ---------- modération ---------- */
+.sanction-add { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.sanction-add input {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 11px; border-radius: 8px; font: inherit; flex: 1; min-width: 120px;
+}
+.sanction-add button { flex: 0 0 auto; }
+#annText { width: 100%; max-width: 620px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
+#annText:focus, .sanction-add input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
+#sancList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; }
+.sanc-item {
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.sanc-item.off { opacity: .5; }
+.sanc-item.banned { border-color: var(--danger); background: rgba(255,95,95,.08); }
+.sanc-item .si-main { flex: 1; }
+.sanc-item .si-count { font-weight: 700; color: var(--accent-bright); margin-left: 6px; }
+.sanc-item.banned .si-count { color: var(--danger); }
+.sanc-item .si-by { color: var(--text-faint); font-size: 11px; margin-top: 3px; }
+
+/* ---------- notes de version ---------- */
+#patchList { display: flex; flex-direction: column; gap: 18px; max-width: 720px; margin-top: 12px; }
+.patch { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+.patch-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.patch-h strong { font-family: "Chakra Petch", sans-serif; }
+.patch-d { color: var(--text-faint); font-size: 12px; }
+.patch ul { margin: 0; padding-left: 20px; }
+.patch li { margin: 4px 0; color: var(--text-dim); }
+
 /* ---------- responsive / téléphone ---------- */
 @media (max-width: 760px) {
   /* nav en barre du bas, pouce-friendly */
   #app.on { flex-direction: column-reverse; }
   #rail {
-    width: 100%; flex-direction: row; justify-content: space-around; align-items: center;
+    width: 100%; flex-direction: row; justify-content: flex-start; align-items: center;
     border-right: 0; border-top: 1px solid var(--border);
-    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
-    gap: 2px;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+    gap: 2px; overflow-x: auto; scrollbar-width: none;
   }
+  #rail::-webkit-scrollbar { display: none; }
   #rail .logo, #rail .spacer { display: none; }
-  .navbtn { width: 46px; height: 46px; font-size: 21px; }
+  .navbtn { width: 44px; height: 44px; font-size: 20px; flex: 1 0 auto; }
   .navbtn .tip { display: none; }
   .navbtn.active::before { display: none; }
 
   /* vues plein écran, marges resserrées */
   #viewHome { padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest { padding: 22px 14px; }
+  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch { padding: 22px 14px; }
   .home-hi { font-size: 22px; }
   .cards { grid-template-columns: 1fr; gap: 12px; }
   .card { min-height: 96px; padding: 16px; }

@@ -1,0 +1,51 @@
+[
+  {
+    "date": "2026-09-02",
+    "title": "Présence, modération & signature",
+    "items": [
+      "Écran de démarrage animé du serveur + signature « développé par Yuza » (console, en-têtes HTTP, écran de connexion).",
+      "Le rôle Discord de chaque staff est affiché dans l'app (barre de statut + onglet Équipe), mis à jour en direct.",
+      "Statut de présence : Présent / Occupé / Absent, + passage automatique en « inactif » (orange) après 10 min sans activité souris.",
+      "Onglet Modération : publier une annonce dans un salon Discord, gérer les sanctions du staff (3 sanctions = plus d'accès au site).",
+      "Un ticket fermé est automatiquement relâché (plus d'assigné).",
+      "Un grade inférieur ne peut pas retirer un ticket pris par un grade supérieur.",
+      "Quand un ticket est classé dans une catégorie, le responsable de cette catégorie est notifié.",
+      "Note de satisfaction : les boutons Discord affichent des étoiles (⭐ … ⭐⭐⭐⭐⭐).",
+      "Ctrl+V d'une image dans la conversation (même sans cliquer dans le champ).",
+      "Réglages : fermeture auto & anti-flood masqués ; nouvel onglet Notes de version."
+    ]
+  },
+  {
+    "date": "2026-09-02",
+    "title": "Apparence personnelle & mobile",
+    "items": [
+      "Chaque staff choisit son propre thème (Défaut / Noir profond / Ardoise / Clair) + couleur d'accent — visible par lui seul, sur tous ses appareils.",
+      "Interface repensée pour le téléphone : nav en bas, liste ↔ conversation en plein écran, cibles tactiles agrandies.",
+      "Panneau « Contacter le support » : message Discord avec un bouton pour ouvrir un ticket.",
+      "Note de satisfaction 1→5 envoyée au client à la clôture ; moyenne globale et par staff dans les Stats."
+    ]
+  },
+  {
+    "date": "2026-09-01",
+    "title": "Réglages owner, confort",
+    "items": [
+      "Réglages réservés à l'owner ; les autres staff ne voient que l'apparence.",
+      "Boîte à suggestions.",
+      "Charge de travail par staff dans les Stats.",
+      "Annuaire des membres du serveur + envoi de MP individuel.",
+      "Message automatique envoyé au client à la clôture d'un ticket."
+    ]
+  },
+  {
+    "date": "2026-09-01",
+    "title": "Tickets avancés",
+    "items": [
+      "Demande de rôle sur un ticket (bannière + notif aux membres du rôle).",
+      "Statut d'attente client / staff + minuteur SLA.",
+      "Menu de catégorie envoyé au client dès le 1er message.",
+      "Recherche avancée, filtres par assigné et priorité.",
+      "Renommage, priorité, assignation, escalade entre niveaux, vue « staff seulement ».",
+      "Notes internes, pièces jointes, blacklist, transcript téléchargeable, notifications navigateur + Web Push."
+    ]
+  }
+]

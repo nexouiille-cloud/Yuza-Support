@@ -39,7 +39,7 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Notes internes** | case à cocher ; visibles par tout le staff, jamais envoyées au client (= chat interne du ticket) |
 | **Renommer** | bouton ✏️ : donner un titre au ticket (sinon = pseudo client) |
 | **Priorité** | basse / normale / haute / urgente ; pastille colorée ; urgents remontés en haut |
-| **Assignation** | Prendre / Lâcher / Reprendre ; 🔒 dans la liste + en-tête ; trace écrite dans la conversation |
+| **Assignation** | Prendre / Lâcher / Reprendre ; 🔒 dans la liste + en-tête ; trace écrite. Un **grade inférieur ne peut pas retirer** un ticket pris par un grade supérieur. Un ticket **clôturé est relâché** automatiquement. |
 | **Catégories** | éditables dans `server/categories.json` ; menu par ticket |
 | **Escalade** | si `STAFF_TIERS` défini : menu niveau ; escalader = les staff sous ce niveau **perdent l'accès au contenu** (vérifié serveur) |
 | **Historique** | filtres Ouverts / Non assignés / Clôturés / Tous + recherche (nom, ID, contenu des messages) |
@@ -51,7 +51,12 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Stats** | vue dédiée : total / ouverts / clôturés / non assignés, temps de réponse moyen, graphe 14 j, par catégorie, par staff |
 | **Notifications** | toast navigateur (onglet ouvert) + **Web Push** (onglet fermé, HTTPS requis) + compteur dans le titre + ping Discord dans un salon (`STAFF_CHANNEL_ID`) |
 | **Accueil** | écran à cartes : Tickets ouverts, Non assignés, Statistiques (+ Macros / Réglages « bientôt ») |
-| **Présence staff** | qui est en ligne — chips sur l'accueil + onglet **👥 Équipe** (liste nom/rôle) + compteur dans la barre de statut, temps réel |
+| **Présence staff** | qui est en ligne — chips sur l'accueil + onglet **👥 Équipe** avec le **rôle Discord** de chacun + compteur dans la barre de statut, temps réel |
+| **Statut de présence** | chacun choisit **Présent / Occupé / Absent** (barre de statut). Passage auto en **inactif** (orange) après 10 min sans activité souris. |
+| **Modération** (🛡️) | owner + grade max : **publier une annonce** dans un salon Discord, **sanctionner** un staff. 3 sanctions actives → la personne perd l'accès au site (à chaud). Trace dans le salon sanctions. |
+| **Notes de version** (📃) | onglet visible par tous : la liste des ajouts / corrections au fil des mises à jour (`web/patchnotes.json`). |
+| **Responsables par catégorie** | Réglages : un rôle Discord par catégorie. Quand un ticket est classé dans cette catégorie, les membres du rôle sont notifiés (site + salon d'annonce). |
+| **Signature** | « développé par Yuza » : écran de démarrage animé du serveur, en-têtes HTTP (`X-Author`), pied de l'écran de connexion, barre de statut, console navigateur. |
 | **Fiche membre** | recherche pseudo/ID sur l'accueil (ou bouton 👤 dans un ticket) → profil : 1er contact, nb messages, staff ayant répondu, statut, blacklist… |
 | **Annuaire du serveur** | onglet 📇 : tous les membres Discord + leurs rôles, recherche par pseudo ou rôle, bouton **✉️ MP** → le bot envoie un message individuel (convocation, avertissement…). Trace postée dans le salon d'annonce. Envoi 1 par 1, limité à 15/min/staff. |
 | **Transcript** | bouton ⬇ dans un ticket → télécharge la conversation en fichier HTML autonome |
@@ -59,7 +64,7 @@ data.json   base (créée au 1er lancement ; sur un volume si DATA_DIR défini)
 | **Mon apparence** | dans ⚙️, section visible par **tous les staff**. Chacun choisit son propre thème (Défaut serveur / Noir profond / Ardoise / Clair) + sa couleur d'accent → **visible par lui seul**, sur tous ses appareils (gardé côté compte + `localStorage`). Le thème du serveur ne sert que de défaut pour ceux qui n'ont rien personnalisé. |
 | **Suggestions** | onglet 💡 : n'importe quel staff propose une amélioration → l'owner voit la liste (marquer fait / supprimer). |
 | **Panneau « Contacter le support »** | Réglages (owner) : titre + texte + salon → **Publier**. Le bot poste un message Discord avec un bouton ; le client clique → le bot lui écrit en MP et le ticket se crée à sa 1re réponse. Re-publier met à jour le même message. |
-| **Note de satisfaction** | à la clôture (manuelle ou auto), le bot envoie au client des boutons **1 à 5**. Résultat dans les Stats : moyenne globale + moyenne par staff. Activable dans Réglages. |
+| **Note de satisfaction** | à la clôture (manuelle ou auto), le bot envoie au client des boutons en **étoiles** (⭐ → ⭐⭐⭐⭐⭐). Résultat dans les Stats : moyenne globale + moyenne par staff. Activable dans Réglages. |
 | **Mobile** | interface pensée pour le téléphone : nav en barre du bas, liste des tickets ↔ conversation en plein écran (bouton ←), en-tête qui défile, champs et boutons agrandis, cartes en 1 colonne, respect des encoches. |
 | **Charge par staff** | dans les Stats : nb de tickets ouverts assignés par staff. |
 | **Coller une image** | Ctrl+V dans le champ de réponse → envoi direct au client. |

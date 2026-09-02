@@ -33,9 +33,18 @@ import {
 } from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
+import { bootScreen, SIGNATURE } from './boot.js';
+import { bot } from './bot.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = Fastify({ logger: false });
+
+// signature — présente aussi dans les en-têtes HTTP de chaque réponse
+app.addHook('onSend', (req, reply, payload, done) => {
+  reply.header('X-Author', SIGNATURE);
+  reply.header('X-Powered-By', `Volt Support (by ${SIGNATURE})`);
+  done(null, payload);
+});
 
 initPush();
 
@@ -254,19 +263,12 @@ setTicketUpdateHandler(handleTicketUpdate);
 await startBot();
 await app.listen({ port: config.port, host: config.host });
 
-console.log(`[server] à l'écoute sur http://${config.host}:${config.port}`);
-console.log(`[server] rôles staff autorisés : ${config.staffRoleIds.join(', ')}`);
-console.log(
-  `[server] catégories (${config.categories.length}) : ${config.categories.join(', ')}`,
-);
-if (config.staffTiers.length) {
-  console.log(
-    `[server] niveaux : ${config.staffTiers
-      .map((t, i) => `${i + 2}=${t.name}`)
-      .join(', ')}`,
-  );
-}
-console.log(
-  `[server] message d'accueil auto : ${config.welcomeMessage ? 'activé' : 'désactivé (welcome.txt vide)'}`,
-);
-console.log('[server] Web Push + pièces jointes : prêts');
+await bootScreen({
+  host: config.host,
+  port: config.port,
+  staffRoleIds: config.staffRoleIds,
+  categories: config.categories,
+  tiers: config.staffTiers.map((t) => t.name),
+  welcome: !!config.welcomeMessage,
+  botTag: bot?.user?.tag,
+});

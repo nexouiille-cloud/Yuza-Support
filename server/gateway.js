@@ -8,6 +8,8 @@ import {
   sendConvocation,
   publishSupportPanel,
   sendRatingRequest,
+  postAnnouncement,
+  postSanction,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -48,6 +50,13 @@ import {
   deleteSuggestion,
   getUserTheme,
   setUserTheme,
+  effectiveCategoryRoles,
+  roleForCategory,
+  addSanction,
+  listSanctions,
+  removeSanction,
+  activeSanctionCount,
+  isStaffBanned,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -84,8 +93,18 @@ function broadcastAll(obj) {
 function presenceList() {
   const seen = new Map();
   for (const c of clients) {
-    if (c.ready && !seen.has(c.session.uid)) {
-      seen.set(c.session.uid, { uid: c.session.uid, name: c.session.name, level: c.level });
+    if (!c.ready) continue;
+    const prev = seen.get(c.session.uid);
+    // si plusieurs onglets : on garde le statut le plus "présent"
+    const rank = { online: 0, idle: 1, away: 2, busy: 3 };
+    if (!prev || (rank[c.status] ?? 0) < (rank[prev.status] ?? 0)) {
+      seen.set(c.session.uid, {
+        uid: c.session.uid,
+        name: c.session.name,
+        level: c.level,
+        roleName: c.roleName || null,
+        status: c.status || 'online',
+      });
     }
   }
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -195,22 +214,30 @@ export function registerGateway(app) {
       return;
     }
 
-    const entry = { socket, session, level: 1, roleIds: [], ready: false };
+    const entry = { socket, session, level: 1, roleIds: [], roleName: null, status: 'online', ready: false };
     clients.add(entry);
 
     // niveau réel (asynchrone) : rôle + tiers
-    getStaffMember(session.uid).then(({ isStaff, level, roleIds }) => {
+    getStaffMember(session.uid).then(({ isStaff, level, roleIds, roleName }) => {
       if (!isStaff) {
         send(entry, { type: 'kicked', reason: 'role_removed' });
         socket.close();
         clients.delete(entry);
         return;
       }
+      if (isStaffBanned(session.uid)) {
+        send(entry, { type: 'kicked', reason: 'sanctioned' });
+        socket.close();
+        clients.delete(entry);
+        return;
+      }
       entry.level = level;
       entry.roleIds = roleIds || [];
+      entry.roleName = roleName || null;
       entry.isOwner = config.ownerIds.length
         ? config.ownerIds.includes(session.uid)
         : level >= maxLevel;
+      entry.canModerate = entry.isOwner || level >= maxLevel;
       entry.ready = true;
       send(entry, {
         type: 'hello',
@@ -218,6 +245,8 @@ export function registerGateway(app) {
         name: session.name,
         level,
         levelLabel: levelName(level),
+        roleName: entry.roleName,
+        canModerate: entry.canModerate,
         tiers: config.staffTiers.map((t) => t.name),
         maxLevel,
         blacklist: getBlacklist(),
@@ -364,6 +393,21 @@ export function registerGateway(app) {
           };
         }
         if (typeof p.askRating === 'boolean') patch.askRating = p.askRating;
+        if (typeof p.announceChannelId === 'string') {
+          patch.announceChannelId = p.announceChannelId.trim();
+        }
+        if (typeof p.sanctionChannelId === 'string') {
+          patch.sanctionChannelId = p.sanctionChannelId.trim();
+        }
+        if (Array.isArray(p.categoryRoles)) {
+          patch.categoryRoles = p.categoryRoles
+            .map((r) => ({
+              category: String(r.category || '').trim(),
+              roleId: String(r.roleId || '').trim(),
+            }))
+            .filter((r) => r.category && r.roleId)
+            .slice(0, 40);
+        }
         updateSettings(patch);
         send(entry, { type: 'settings_saved', ok: true });
         broadcastAll({ type: 'categories', categories: effectiveCategories() });
@@ -374,6 +418,79 @@ export function registerGateway(app) {
           slaMinutes: effectiveSla(),
         });
         pushTickets();
+        return;
+      }
+
+      /* ---- statut de présence (présent / occupé / absent / inactif) ---- */
+      if (msg.type === 'set_status') {
+        const s = String(msg.status || 'online');
+        if (['online', 'busy', 'away', 'idle'].includes(s)) {
+          entry.status = s;
+          broadcastPresence();
+        }
+        return;
+      }
+
+      /* ---- annonce dans le salon annonces ---- */
+      if (msg.type === 'announce') {
+        if (!entry.canModerate) {
+          send(entry, { type: 'announced', ok: false, error: 'forbidden' });
+          return;
+        }
+        const text = String(msg.text || '').trim();
+        if (!text) {
+          send(entry, { type: 'announced', ok: false, error: 'vide' });
+          return;
+        }
+        try {
+          await postAnnouncement(text, session.name);
+          send(entry, { type: 'announced', ok: true });
+        } catch (e) {
+          send(entry, { type: 'announced', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+
+      /* ---- sanctions staff (3 = plus d'accès au site) ---- */
+      if (msg.type === 'get_sanctions') {
+        if (!entry.canModerate) return;
+        send(entry, { type: 'sanctions', list: listSanctions() });
+        return;
+      }
+      if (msg.type === 'sanction_add') {
+        if (!entry.canModerate) {
+          send(entry, { type: 'sanctions', list: [], error: 'forbidden' });
+          return;
+        }
+        const targetId = String(msg.targetId || '').trim();
+        const targetName = String(msg.targetName || targetId).trim();
+        const reason = String(msg.reason || '').trim();
+        if (!targetId) return;
+        addSanction(targetId, targetName, reason, session.uid, session.name);
+        const count = activeSanctionCount(targetId);
+        postSanction({ targetId, targetName, reason, byName: session.name, count });
+        // 3 sanctions actives -> on éjecte ses sockets
+        if (count >= 3) {
+          for (const c of [...clients]) {
+            if (c.session.uid === targetId) {
+              send(c, { type: 'kicked', reason: 'sanctioned' });
+              c.socket.close();
+              clients.delete(c);
+            }
+          }
+          broadcastPresence();
+        }
+        for (const c of clients) {
+          if (c.canModerate) send(c, { type: 'sanctions', list: listSanctions() });
+        }
+        return;
+      }
+      if (msg.type === 'sanction_del') {
+        if (!entry.canModerate) return;
+        removeSanction(msg.id | 0);
+        for (const c of clients) {
+          if (c.canModerate) send(c, { type: 'sanctions', list: listSanctions() });
+        }
         return;
       }
 
@@ -564,7 +681,7 @@ export function registerGateway(app) {
         // auto-assignation si personne ne s'en occupe
         let assigned = false;
         if (t && !t.assignee_id) {
-          setTicketAssignee(msg.userId, session.uid, session.name);
+          setTicketAssignee(msg.userId, session.uid, session.name, entry.level);
           assigned = true;
         }
         // si un rôle était demandé et que je l'ai -> demande satisfaite
@@ -630,16 +747,62 @@ export function registerGateway(app) {
           msg.category && effectiveCategories().includes(msg.category)
             ? msg.category
             : null;
+        const prevCat = getTicket(msg.userId)?.category || null;
         setTicketCategory(msg.userId, cat);
         pushTickets();
+        // notifier le responsable de la catégorie
+        if (cat && cat !== prevCat) {
+          const roleId = roleForCategory(cat);
+          if (roleId) {
+            const t = getTicket(msg.userId);
+            const label = t?.title || t?.username || 'un client';
+            const sys = addMessage(
+              msg.userId,
+              'system',
+              'Système',
+              `Ticket classé dans « ${cat} » par ${session.name} — responsables notifiés`,
+            );
+            broadcastTicket(msg.userId, { type: 'message', message: sys });
+            for (const c of clients) {
+              if (c.ready && c.roleIds.includes(roleId)) {
+                send(c, {
+                  type: 'category_assigned',
+                  userId: msg.userId,
+                  category: cat,
+                  ticketName: label,
+                  by: session.name,
+                });
+              }
+            }
+            pingRoleInChannel(
+              roleId,
+              `📂 ticket de **${label}** classé dans **${cat}** par **${session.name}**`,
+            );
+          }
+        }
         return;
       }
 
       /* ---- prendre / lâcher un ticket ---- */
       if (msg.type === 'assign') {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
-        if (msg.take) setTicketAssignee(msg.userId, session.uid, session.name);
-        else setTicketAssignee(msg.userId, null, null);
+        const at0 = getTicket(msg.userId);
+        // un grade inférieur ne peut pas retirer le ticket à un grade supérieur
+        if (
+          msg.take &&
+          at0?.assignee_id &&
+          at0.assignee_id !== session.uid &&
+          (at0.assignee_level || 1) > entry.level
+        ) {
+          send(entry, {
+            type: 'error',
+            reason: 'assignee_higher',
+            userId: msg.userId,
+          });
+          return;
+        }
+        if (msg.take) setTicketAssignee(msg.userId, session.uid, session.name, entry.level);
+        else setTicketAssignee(msg.userId, null, null, null);
         const at = getTicket(msg.userId);
         if (
           msg.take &&
@@ -745,6 +908,10 @@ export function registerGateway(app) {
         if (!msg.userId || !canSee(entry, msg.userId)) return;
         setTicketStatus(msg.userId, msg.type === 'close' ? 'closed' : 'open');
         if (msg.type === 'close') {
+          // un ticket fermé est relâché : plus personne ne "l'a pris"
+          if (getTicket(msg.userId)?.assignee_id) {
+            setTicketAssignee(msg.userId, null, null, null);
+          }
           const tpl = effectiveCloseMessage();
           if (tpl) {
             const tk = getTicket(msg.userId);
@@ -769,21 +936,23 @@ export function registerGateway(app) {
     async () => {
       let changed = false;
       for (const c of [...clients]) {
-        const { isStaff, level, roleIds } = await getStaffMember(c.session.uid);
-        if (!isStaff) {
+        const { isStaff, level, roleIds, roleName } = await getStaffMember(c.session.uid);
+        if (!isStaff || isStaffBanned(c.session.uid)) {
           if (c.socket.readyState === 1) {
-            send(c, { type: 'kicked', reason: 'role_removed' });
+            send(c, { type: 'kicked', reason: isStaff ? 'sanctioned' : 'role_removed' });
             c.socket.close();
           }
           clients.delete(c);
           changed = true;
           continue;
         }
-        const rolesChanged =
-          (roleIds || []).join(',') !== c.roleIds.join(',');
+        const rolesChanged = (roleIds || []).join(',') !== c.roleIds.join(',');
+        const roleNameChanged = (roleName || null) !== (c.roleName || null);
         if (rolesChanged) c.roleIds = roleIds || [];
-        if (level !== c.level || rolesChanged) {
+        if (roleNameChanged) c.roleName = roleName || null;
+        if (level !== c.level || rolesChanged || roleNameChanged) {
           c.level = level;
+          c.canModerate = c.isOwner || level >= maxLevel;
           updatePushSubLevel(c.session.uid, level);
           send(c, {
             type: 'hello',
@@ -791,6 +960,8 @@ export function registerGateway(app) {
             name: c.session.name,
             level,
             levelLabel: levelName(level),
+            roleName: c.roleName,
+            canModerate: c.canModerate,
             tiers: config.staffTiers.map((t) => t.name),
             maxLevel,
             blacklist: getBlacklist(),

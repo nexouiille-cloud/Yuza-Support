@@ -23,6 +23,8 @@ import {
   setPanelMessageId,
   effectiveAskRating,
   setTicketRating,
+  effectiveAnnounceChannel,
+  effectiveSanctionChannel,
   setTicketCategory,
   getTicket,
 } from './db.js';
@@ -338,7 +340,7 @@ export async function sendRatingRequest(userId) {
       [1, 2, 3, 4, 5].map((n) =>
         new ButtonBuilder()
           .setCustomId('rate:' + n)
-          .setLabel(String(n))
+          .setLabel('⭐'.repeat(n))
           .setStyle(ButtonStyle.Secondary),
       ),
     );
@@ -405,6 +407,11 @@ export async function getStaffMember(userId) {
     const member = await guild.members.fetch(userId);
     const roleIds = [...member.roles.cache.keys()];
     const isStaff = roleIds.some((id) => config.staffRoleIds.includes(id));
+    // rôle Discord le plus haut (hors @everyone) — affiché dans le site
+    const topRole = [...member.roles.cache.values()]
+      .filter((r) => r.name !== '@everyone')
+      .sort((a, b) => b.position - a.position)[0];
+    const roleName = topRole ? topRole.name : null;
     if (!isStaff) {
       console.log(`[auth] ${member.user.tag} : aucun rôle staff détecté`);
       console.log(`       rôles du membre : ${roleIds.join(', ') || '(aucun)'}`);
@@ -415,13 +422,13 @@ export async function getStaffMember(userId) {
     config.staffTiers.forEach((tier, i) => {
       if (roleIds.includes(tier.roleId)) level = Math.max(level, i + 2);
     });
-    return { member, isStaff, level, roleIds };
+    return { member, isStaff, level, roleIds, roleName };
   } catch (err) {
     console.error(
       `[auth] getStaffMember échoué (guild=${config.guildId}, user=${userId}) :`,
       err?.message || err,
     );
-    return { member: null, isStaff: false, level: 0, roleIds: [] };
+    return { member: null, isStaff: false, level: 0, roleIds: [], roleName: null };
   }
 }
 
@@ -438,6 +445,45 @@ export async function pingRoleInChannel(roleId, text) {
     });
   } catch (err) {
     console.error('[bot] ping rôle échoué :', err?.message || err);
+  }
+}
+
+// Publie une annonce dans le salon annonces.
+export async function postAnnouncement(text, byName) {
+  const channelId = effectiveAnnounceChannel();
+  if (!channelId) throw new Error('salon annonces non configuré');
+  const ch = await bot.channels.fetch(channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon annonces introuvable');
+  const embed = new EmbedBuilder()
+    .setDescription(String(text).slice(0, 4000))
+    .setColor(0xff9d00)
+    .setFooter({ text: `Annonce · ${byName || 'staff'}` })
+    .setTimestamp(new Date());
+  await ch.send({ embeds: [embed] });
+}
+
+// Trace une sanction dans le salon sanctions.
+export async function postSanction({ targetId, targetName, reason, byName, count }) {
+  const channelId = effectiveSanctionChannel();
+  if (!channelId) return;
+  try {
+    const ch = await bot.channels.fetch(channelId);
+    if (!ch || !ch.isTextBased()) return;
+    const embed = new EmbedBuilder()
+      .setTitle(`⚠ Sanction ${count}/3`)
+      .setColor(count >= 3 ? 0xff5f5f : 0xff9d00)
+      .addFields(
+        { name: 'Membre', value: `${targetName} (<@${targetId}>)`, inline: false },
+        { name: 'Raison', value: reason || '—', inline: false },
+        { name: 'Par', value: byName || '—', inline: true },
+      )
+      .setTimestamp(new Date());
+    if (count >= 3) {
+      embed.setDescription("**3 sanctions atteintes → accès au site retiré.**");
+    }
+    await ch.send({ embeds: [embed], allowedMentions: { users: [] } });
+  } catch (err) {
+    console.error('[bot] trace sanction échouée :', err?.message || err);
   }
 }
 
