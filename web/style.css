@@ -573,23 +573,24 @@ button:disabled { opacity: 0.45; cursor: default; }
 .sanc-item.banned .si-count { color: var(--danger); }
 .sanc-item .si-by { color: var(--text-faint); font-size: 11px; margin-top: 3px; }
 
-/* ---------- journal des connexions ---------- */
-#loginList { display: flex; flex-direction: column; gap: 4px; max-height: 340px; overflow-y: auto; }
+/* ---------- 1re connexion au site ---------- */
+#loginList { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
 .login-item {
-  display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+  display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center; gap: 12px;
+  padding: 8px 11px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
   font-size: 12px;
 }
 .login-item .lg-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
 .login-item.live .lg-dot { background: var(--ok); box-shadow: 0 0 7px 1px rgba(67,209,98,.5); }
-.login-item .lg-name { font-weight: 600; color: var(--text); }
-.login-item .lg-role { color: var(--accent-bright); font-size: 11px; }
-.login-item .lg-when { color: var(--text-dim); }
+.login-item .lg-name { font-weight: 600; color: var(--text); display: flex; align-items: baseline; gap: 8px; }
+.login-item .lg-role { color: var(--accent-bright); font-size: 11px; font-weight: 500; }
+.login-item .lg-first { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.login-item .lg-first sup { font-size: .7em; }
+.login-item .lg-when { color: var(--text-faint); white-space: nowrap; }
 .login-item.live .lg-when { color: var(--ok); }
-.login-item .lg-date { color: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
 @media (max-width: 760px) {
-  .login-item { grid-template-columns: 12px 1fr auto; }
-  .login-item .lg-date { display: none; }
+  .login-item { grid-template-columns: 12px 1fr auto; row-gap: 2px; }
+  .login-item .lg-when { grid-column: 2 / 4; color: var(--text-faint); }
 }
 
 /* ---------- notes de version ---------- */

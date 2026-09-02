@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], logins: [], lastSeen: {} };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {} };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -23,8 +23,7 @@ if (existsSync(FILE)) {
     data.suggestions ||= [];
     data.userThemes ||= {};
     data.sanctions ||= [];
-    data.logins ||= [];
-    data.lastSeen ||= {};
+    data.firstSeen ||= {};
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -323,29 +322,31 @@ export function roleForCategory(category) {
   return effectiveCategoryRoles().find((r) => r.category === category)?.roleId || '';
 }
 
-/* ---------------- journal des connexions au site (owner) ---------------- */
+/* ---------------- 1re connexion au site de chaque personne (owner) ---------------- */
+// Enregistré UNE fois, à la toute première connexion, et gardé pour toujours.
+// Les connexions suivantes ne font que rafraîchir le pseudo / la dernière visite.
 export function recordLogin(uid, name, roleName) {
   const id = String(uid);
   const now = Date.now();
-  data.lastSeen[id] = { name, roleName: roleName || null, at: now };
-  // regroupe les reconnexions rapprochées (< 5 min) en une seule "session"
-  let recent = null;
-  for (let i = data.logins.length - 1; i >= 0; i--) {
-    if (data.logins[i].uid === id) { recent = data.logins[i]; break; }
-    if (now - data.logins[i].at > 5 * 60000) break;
-  }
-  if (recent && now - recent.at < 5 * 60000) {
-    recent.at = now;
-    recent.name = name;
-    recent.roleName = roleName || null;
+  const e = data.firstSeen[id];
+  if (e) {
+    e.name = name; // on garde le pseudo Discord à jour
+    e.roleName = roleName || null;
+    e.lastAt = now;
   } else {
-    data.logins.push({ id: ++data.seq, uid: id, name, roleName: roleName || null, at: now });
-    if (data.logins.length > 800) data.logins = data.logins.slice(-800);
+    data.firstSeen[id] = {
+      uid: id,
+      name,
+      roleName: roleName || null,
+      firstAt: now, // ← jamais modifié
+      lastAt: now,
+    };
   }
   save();
 }
-export function listLogins(limit = 200) {
-  return [...data.logins].sort((a, b) => b.at - a.at).slice(0, limit);
+// triés : première connexion la plus récente en haut
+export function listFirstSeen() {
+  return Object.values(data.firstSeen).sort((a, b) => b.firstAt - a.firstAt);
 }
 
 /* ---------------- sanctions staff (3 = plus d'accès) ---------------- */

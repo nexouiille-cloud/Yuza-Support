@@ -58,7 +58,7 @@ import {
   activeSanctionCount,
   isStaffBanned,
   recordLogin,
-  listLogins,
+  listFirstSeen,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -120,7 +120,7 @@ function onlineUids() {
 }
 // journal des connexions -> poussé aux owners uniquement
 function pushLoginsToOwners() {
-  const payload = { type: 'logins', list: listLogins(200), online: onlineUids() };
+  const payload = { type: 'logins', list: listFirstSeen(), online: onlineUids() };
   for (const c of clients) if (c.ready && c.isOwner) send(c, payload);
 }
 
@@ -278,7 +278,7 @@ export function registerGateway(app) {
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
       recordLogin(session.uid, session.name, entry.roleName);
       if (entry.isOwner) {
-        send(entry, { type: 'logins', list: listLogins(200), online: onlineUids() });
+        send(entry, { type: 'logins', list: listFirstSeen(), online: onlineUids() });
       }
       pushLoginsToOwners(); // les autres owners voient la nouvelle connexion
       broadcastPresence();
@@ -470,7 +470,7 @@ export function registerGateway(app) {
       /* ---- journal des connexions (owner uniquement) ---- */
       if (msg.type === 'get_logins') {
         if (!entry.isOwner) return;
-        send(entry, { type: 'logins', list: listLogins(200), online: onlineUids() });
+        send(entry, { type: 'logins', list: listFirstSeen(), online: onlineUids() });
         return;
       }
 

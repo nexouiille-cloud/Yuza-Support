@@ -1562,7 +1562,7 @@ function renderLogins(list, online) {
   if (!box) return;
   const on = new Set((online || []).map(String));
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Aucune connexion enregistrée.</div>';
+    box.innerHTML = "<div class=\"muted\">Personne ne s'est encore connecté.</div>";
     return;
   }
   box.innerHTML = list
@@ -1571,10 +1571,11 @@ function renderLogins(list, online) {
       return (
         `<div class="login-item${live ? ' live' : ''}">` +
         `<span class="lg-dot"></span>` +
-        `<span class="lg-name">${esc(l.name)}</span>` +
-        `<span class="lg-role">${esc(l.roleName || '')}</span>` +
-        `<span class="lg-when">${live ? 'en ligne' : ago(l.at)}</span>` +
-        `<span class="lg-date">${new Date(l.at).toLocaleString('fr-FR')}</span>` +
+        `<span class="lg-name">${esc(l.name)}` +
+        (l.roleName ? `<span class="lg-role">${esc(l.roleName)}</span>` : '') +
+        `</span>` +
+        `<span class="lg-first">1<sup>re</sup> connexion&nbsp;: ${new Date(l.firstAt).toLocaleString('fr-FR')}</span>` +
+        `<span class="lg-when">${live ? 'en ligne' : 'vu ' + ago(l.lastAt)}</span>` +
         `</div>`
       );
     })
