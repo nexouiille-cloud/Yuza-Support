@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {} };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [] };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -26,6 +26,7 @@ if (existsSync(FILE)) {
     data.firstSeen ||= {};
     data.reports ||= [];
     data.onboarded ||= {};
+    data.archive ||= [];
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -85,6 +86,50 @@ export function upsertTicket(userId, username, preview) {
   }
   save();
   return { created, reopened };
+}
+
+// Archive un ticket clôturé : on le sort de la liste active (avec ses messages)
+// pour que le prochain MP du client crée un ticket NEUF. L'historique est gardé.
+export function archiveTicket(userId) {
+  const t = data.tickets[userId];
+  if (!t) return null;
+  const entry = {
+    id: ++data.seq,
+    user_id: String(userId),
+    username: t.username,
+    title: t.title || null,
+    category: t.category || null,
+    priority: t.priority || 'normal',
+    escalation_level: t.escalation_level || 1,
+    assignee_name: t.assignee_name || null,
+    created_at: t.created_at,
+    closed_at: Date.now(),
+    messages: data.messages[userId] || [],
+  };
+  data.archive.push(entry);
+  if (data.archive.length > 3000) data.archive = data.archive.slice(-3000);
+  delete data.tickets[userId];
+  delete data.messages[userId];
+  save();
+  return entry;
+}
+export function getArchivedFor(userId) {
+  const id = String(userId);
+  return data.archive
+    .filter((a) => a.user_id === id)
+    .sort((a, b) => b.closed_at - a.closed_at)
+    .map((a) => ({
+      id: a.id,
+      username: a.username,
+      title: a.title,
+      category: a.category,
+      created_at: a.created_at,
+      closed_at: a.closed_at,
+      messages_total: (a.messages || []).length,
+    }));
+}
+export function getArchivedById(id) {
+  return data.archive.find((a) => a.id === (id | 0)) || null;
 }
 
 export function setTicketAssignee(userId, id, name, level) {
@@ -511,12 +556,42 @@ export function findTicketId(query) {
     if (String(t.user_id) === q) return t.user_id;
     if ((t.username || '').toLowerCase().includes(q)) return t.user_id;
   }
+  // pas de ticket en cours -> on cherche dans les archives
+  for (const a of data.archive) {
+    if (String(a.user_id) === q) return a.user_id;
+    if ((a.username || '').toLowerCase().includes(q)) return a.user_id;
+  }
   return null;
 }
 
 export function getMemberProfile(userId) {
   const t = data.tickets[userId];
-  if (!t) return null;
+  const past = getArchivedFor(userId);
+  if (!t && !past.length) return null;
+
+  // client qui n'a plus que des tickets archivés (pas de ticket en cours)
+  if (!t) {
+    const last = past[0];
+    return {
+      user_id: userId,
+      username: last?.username || 'client',
+      title: null,
+      status: 'aucun ticket ouvert',
+      category: null,
+      priority: 'normal',
+      escalation_level: 1,
+      assignee_name: null,
+      blacklisted: isBlacklisted(userId),
+      first_at: last?.created_at || null,
+      last_at: last?.closed_at || null,
+      messages_total: 0,
+      messages_client: 0,
+      notes_count: 0,
+      staff_replied: [],
+      past_tickets: past,
+    };
+  }
+
   const msgs = data.messages[userId] || [];
   const staff = new Set();
   let notes = 0;
@@ -542,6 +617,7 @@ export function getMemberProfile(userId) {
     messages_client: fromClient,
     notes_count: notes,
     staff_replied: [...staff],
+    past_tickets: past,
   };
 }
 
@@ -599,20 +675,25 @@ export function listMessages(userId, limit = 200) {
   return arr.slice(-limit);
 }
 
-// Statistiques agrégées (limitées aux tickets visibles au niveau donné).
+// Statistiques agrégées (tickets en cours + archivés, visibles au niveau donné).
 export function getStats(maxLevel = Infinity) {
   const now = Date.now();
-  const tk = Object.values(data.tickets).filter(
-    (t) => (t.escalation_level || 1) <= maxLevel,
-  );
-  const total = tk.length;
-  const open = tk.filter((t) => t.status !== 'closed').length;
-  const unassigned = tk.filter(
-    (t) => t.status !== 'closed' && !t.assignee_id,
+  const live = Object.values(data.tickets)
+    .filter((t) => (t.escalation_level || 1) <= maxLevel)
+    .map((t) => ({ t, msgs: data.messages[t.user_id] || [] }));
+  const arch = data.archive
+    .filter((a) => (a.escalation_level || 1) <= maxLevel)
+    .map((a) => ({ t: { ...a, status: 'closed' }, msgs: a.messages || [] }));
+  const recs = [...live, ...arch];
+
+  const total = recs.length;
+  const open = live.filter((r) => r.t.status !== 'closed').length;
+  const unassigned = live.filter(
+    (r) => r.t.status !== 'closed' && !r.t.assignee_id,
   ).length;
 
   const byCategory = {};
-  for (const t of tk) {
+  for (const { t } of recs) {
     const k = t.category || 'Non trié';
     byCategory[k] = (byCategory[k] || 0) + 1;
   }
@@ -624,7 +705,7 @@ export function getStats(maxLevel = Infinity) {
     idx.set(key, perDay.length);
     perDay.push({ date: key, count: 0 });
   }
-  for (const t of tk) {
+  for (const { t } of recs) {
     const key = new Date(t.created_at).toISOString().slice(0, 10);
     if (idx.has(key)) perDay[idx.get(key)].count++;
   }
@@ -632,7 +713,7 @@ export function getStats(maxLevel = Infinity) {
   let ratingSum = 0;
   let ratingN = 0;
   const ratingStaff = {}; // name -> { sum, n }
-  for (const t of tk) {
+  for (const { t } of recs) {
     if (!t.rating) continue;
     ratingSum += t.rating;
     ratingN++;
@@ -647,8 +728,7 @@ export function getStats(maxLevel = Infinity) {
   let respSum = 0;
   let respN = 0;
   const byStaff = {};
-  for (const t of tk) {
-    const msgs = data.messages[t.user_id] || [];
+  for (const { msgs } of recs) {
     const firstClient = msgs.find((m) => m.author === 'client');
     const firstStaff = msgs.find(
       (m) =>

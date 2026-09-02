@@ -553,30 +553,48 @@ function renderMemberModal(p, query) {
     return;
   }
   const row = (k, v, bad) => `<div class="mm-row"><span class="k">${k}</span><span class="v${bad ? ' bad' : ''}">${v}</span></div>`;
-  const d = (ts) => new Date(ts).toLocaleString('fr-FR');
+  const d = (ts) => (ts ? new Date(ts).toLocaleString('fr-FR') : '—');
+  const noLive = p.status === 'aucun ticket ouvert';
+  const past = p.past_tickets || [];
+  const pastRows = past.length
+    ? `<div class="mm-past"><div class="mm-past-h">Anciens tickets (clôturés) — ${past.length}</div>` +
+      past
+        .map(
+          (a) =>
+            `<div class="mm-past-i"><span>${esc(a.title || a.category || 'ticket')} · ${d(a.closed_at)} · ${a.messages_total} msg</span>` +
+            `<a href="/api/archive/${a.id}" class="mm-dl">⬇</a></div>`,
+        )
+        .join('') +
+      `</div>`
+    : '';
   body.innerHTML =
     row('Pseudo', esc(p.username)) +
     row('ID Discord', esc(p.user_id)) +
     (p.title ? row('Titre du ticket', esc(p.title)) : '') +
-    row('Statut', p.status === 'closed' ? 'clôturé' : 'ouvert') +
-    row('Catégorie', esc(p.category || '—')) +
-    row('Priorité', esc(p.priority)) +
+    row('Statut', noLive ? 'aucun ticket ouvert' : p.status === 'closed' ? 'clôturé' : 'ouvert') +
+    (noLive ? '' : row('Catégorie', esc(p.category || '—'))) +
+    (noLive ? '' : row('Priorité', esc(p.priority))) +
     (p.escalation_level > 1 ? row('Niveau', esc(levelName(p.escalation_level))) : '') +
-    row('Pris en charge par', esc(p.assignee_name || 'personne')) +
+    (noLive ? '' : row('Pris en charge par', esc(p.assignee_name || 'personne'))) +
     row('Bloqué', p.blacklisted ? 'oui' : 'non', p.blacklisted) +
     row('Premier contact', d(p.first_at)) +
     row('Dernière activité', d(p.last_at)) +
-    row('Messages (total)', p.messages_total) +
-    row('Messages du client', p.messages_client) +
-    row('Notes internes', p.notes_count) +
-    row('Staff ayant répondu', p.staff_replied.length ? esc(p.staff_replied.join(', ')) : '—') +
-    `<div class="mm-actions"><button class="btn-accent" id="mmOpen">Ouvrir le ticket</button></div>`;
+    (noLive ? '' : row('Messages (total)', p.messages_total)) +
+    (noLive ? '' : row('Messages du client', p.messages_client)) +
+    (noLive ? '' : row('Notes internes', p.notes_count)) +
+    (noLive ? '' : row('Staff ayant répondu', p.staff_replied.length ? esc(p.staff_replied.join(', ')) : '—')) +
+    pastRows +
+    (noLive
+      ? ''
+      : `<div class="mm-actions"><button class="btn-accent" id="mmOpen">Ouvrir le ticket</button></div>`);
   $('#memberModal').classList.remove('hidden');
-  $('#mmOpen').addEventListener('click', () => {
-    $('#memberModal').classList.add('hidden');
-    showView('tickets');
-    openTicket(p.user_id);
-  });
+  const mo = $('#mmOpen');
+  if (mo)
+    mo.addEventListener('click', () => {
+      $('#memberModal').classList.add('hidden');
+      showView('tickets');
+      openTicket(p.user_id);
+    });
 }
 
 /* ---------------- demande de rôle sur un ticket ---------------- */
@@ -977,6 +995,14 @@ function handle(m) {
       break;
 
     case 'ticket_bump': {
+      // nouveau ticket (ancien archivé) : on repart d'une conversation vide
+      if (m.isNew) {
+        msgCache.delete(m.userId);
+        tickets.delete(m.userId);
+        if (m.userId === current && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'open', userId: m.userId }));
+        }
+      }
       const t =
         tickets.get(m.userId) ||
         { user_id: m.userId, username: m.name, status: 'open' };

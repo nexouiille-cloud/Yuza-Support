@@ -3,6 +3,7 @@
     "date": "2026-09-02",
     "title": "Présence, modération & signature",
     "items": [
+      "Un ticket clôturé est vraiment terminé : si le client réécrit au bot, ça crée une NOUVELLE demande (conversation vierge). L'ancien ticket est archivé et téléchargeable depuis la fiche membre.",
       "Écran de démarrage animé du serveur + signature « développé par Yuza » (console, en-têtes HTTP, écran de connexion).",
       "Animation d'intro à l'entrée dans le site et à chaque refresh (éclair, logo, onde de choc) — cliquer pour passer.",
       "Le logo (logo.png) sert aussi d'icône d'onglet du navigateur.",

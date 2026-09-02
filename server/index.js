@@ -30,6 +30,7 @@ import {
   removePushSub,
   listMessages,
   effectiveTheme,
+  getArchivedById,
 } from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
@@ -206,6 +207,24 @@ app.get('/api/transcript/:userId', async (req, reply) => {
     )
     .type('text/html; charset=utf-8')
     .send(buildTranscript(t, listMessages(req.params.userId, 5000)));
+});
+
+// --- Transcript d'un ancien ticket archivé ---
+app.get('/api/archive/:id', async (req, reply) => {
+  const s = sessionOf(req);
+  if (!s) return reply.code(401).send({ error: 'unauthorized' });
+  const { isStaff, level } = await getStaffMember(s.uid);
+  if (!isStaff) return reply.code(403).send({ error: 'not_staff' });
+  const a = getArchivedById(Number(req.params.id));
+  if (!a) return reply.code(404).send({ error: 'not_found' });
+  if (level < (a.escalation_level || 1)) {
+    return reply.code(403).send({ error: 'denied' });
+  }
+  const name = (a.username || 'client').replace(/[^\w.-]+/g, '_');
+  reply
+    .header('Content-Disposition', `attachment; filename="archive-${name}-${a.id}.html"`)
+    .type('text/html; charset=utf-8')
+    .send(buildTranscript({ ...a, status: 'clôturé (archivé)' }, a.messages || []));
 });
 
 // --- Pièce jointe staff -> client ---

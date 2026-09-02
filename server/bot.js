@@ -19,6 +19,7 @@ import {
   effectiveCategories,
   effectiveAskCategory,
   effectiveFlood,
+  archiveTicket,
   effectivePanel,
   setPanelMessageId,
   effectiveAskRating,
@@ -189,6 +190,13 @@ bot.on(Events.MessageCreate, async (msg) => {
       }
     }
     if (!text && !atts.length) return;
+
+    // ticket déjà clôturé -> on l'archive : ce MP crée une NOUVELLE demande
+    const prev = getTicket(userId);
+    if (prev && prev.status === 'closed') {
+      archiveTicket(userId);
+      onTicketUpdate(userId); // rafraîchit la liste (l'ancien disparaît)
+    }
 
     const preview = (text || '📎 pièce jointe').slice(0, 120);
     const res = upsertTicket(userId, username, preview);

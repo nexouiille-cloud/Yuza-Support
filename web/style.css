@@ -557,6 +557,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 .mm-row .v.bad { color: var(--danger); }
 .mm-actions { margin-top: 16px; display: flex; gap: 8px; }
 .mm-empty { color: var(--text-dim); padding: 8px 0 4px; }
+.mm-past { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.mm-past-h { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); margin-bottom: 8px; }
+.mm-past-i { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--text-dim); padding: 5px 0; }
+.mm-past-i .mm-dl { color: var(--accent-bright); text-decoration: none; padding: 2px 8px; border: 1px solid var(--border); border-radius: 7px; }
+.mm-past-i .mm-dl:hover { background: var(--surface-3); }
 
 /* ---------- apparence perso : retouches thème clair ---------- */
 :root[data-appearance="clair"] body::before { opacity: 0.4; }
