@@ -4,6 +4,8 @@
     "title": "Présence, modération & signature",
     "items": [
       "Écran de démarrage animé du serveur + signature « développé par Yuza » (console, en-têtes HTTP, écran de connexion).",
+      "Animation d'intro à l'entrée dans le site et à chaque refresh (éclair, logo, onde de choc) — cliquer pour passer.",
+      "Le logo (logo.png) sert aussi d'icône d'onglet du navigateur.",
       "Le rôle Discord de chaque staff est affiché dans l'app (barre de statut + onglet Équipe), mis à jour en direct.",
       "Statut de présence : Présent / Occupé / Absent, + passage automatique en « inactif » (orange) après 10 min sans activité souris.",
       "Onglet Modération : publier une annonce dans un salon Discord, gérer les sanctions du staff (3 sanctions = plus d'accès au site).",

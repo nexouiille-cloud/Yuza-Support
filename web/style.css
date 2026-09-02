@@ -77,6 +77,82 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 .hidden { display: none !important; }
 
+/* ---------- intro (entrée / refresh) ---------- */
+#intro {
+  position: fixed; inset: 0; z-index: 9999; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 90% at 50% 62%, #17110a 0%, #060507 68%);
+}
+#intro[hidden] { display: none; }
+#intro.done { animation: introOut 0.55s var(--ease) forwards; }
+@keyframes introOut { to { opacity: 0; transform: scale(1.06); visibility: hidden; } }
+
+.intro-flash {
+  position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+  animation: introFlash 2s var(--ease) forwards;
+}
+@keyframes introFlash {
+  0%, 17% { opacity: 0; }
+  21% { opacity: 0.9; }
+  29% { opacity: 0.04; }
+  33% { opacity: 0.45; }
+  44% { opacity: 0; }
+}
+
+.intro-stage { position: relative; text-align: center; }
+.intro-bolt {
+  position: absolute; left: 50%; translate: -50% 0; top: -62vh;
+  font-size: 44vh; line-height: 1; opacity: 0;
+  filter: drop-shadow(0 0 40px var(--glow));
+  animation: introBolt 1.9s var(--ease) forwards;
+}
+@keyframes introBolt {
+  0% { top: -62vh; opacity: 0; }
+  16% { opacity: 0; }
+  21% { top: -8vh; opacity: 1; }
+  27% { top: -3vh; opacity: 1; }
+  40% { top: 2vh; opacity: 0; }
+  100% { opacity: 0; }
+}
+.intro-logo {
+  width: min(200px, 44vw); height: auto; display: block; margin: 0 auto;
+  opacity: 0; transform: scale(0.3) rotate(-12deg);
+  animation: introLogo 1.7s var(--ease) 0.18s forwards;
+}
+@keyframes introLogo {
+  0% { opacity: 0; transform: scale(0.3) rotate(-12deg); filter: drop-shadow(0 0 0 rgba(255,180,60,0)); }
+  55% { opacity: 1; transform: scale(1.12) rotate(4deg); }
+  70% { transform: scale(0.97) rotate(-1deg); }
+  85% { transform: scale(1.02) rotate(0); }
+  100% { opacity: 1; transform: scale(1) rotate(0); filter: drop-shadow(0 0 34px var(--glow)); }
+}
+.intro-title {
+  margin-top: 20px; font-family: "Chakra Petch", sans-serif; font-weight: 700;
+  font-size: clamp(26px, 6vw, 52px); letter-spacing: 3px;
+  display: flex; gap: 0.4em; justify-content: center;
+}
+.intro-title span { opacity: 0; }
+.intro-title span:first-child { animation: introWordL 0.7s var(--ease) 0.5s forwards; }
+.intro-title span.accent { color: var(--accent); text-shadow: 0 0 22px var(--glow); animation: introWordR 0.7s var(--ease) 0.62s forwards; }
+@keyframes introWordL { from { opacity: 0; transform: translateX(-44px); } to { opacity: 1; transform: none; } }
+@keyframes introWordR { from { opacity: 0; transform: translateX(44px); } to { opacity: 1; transform: none; } }
+.intro-sub {
+  margin-top: 10px; color: var(--text-faint); font-size: 13px; letter-spacing: 1px;
+  opacity: 0; animation: introFade 0.6s ease 0.98s forwards;
+}
+@keyframes introFade { to { opacity: 1; } }
+.intro-ring {
+  position: absolute; left: 50%; top: 50%; width: 40px; height: 40px;
+  border: 2px solid var(--accent); border-radius: 50%; translate: -50% -50%; opacity: 0;
+  animation: introRing 1.5s var(--ease) 0.3s forwards;
+}
+.intro-ring.r2 { animation-delay: 0.48s; border-color: var(--accent-bright); }
+@keyframes introRing {
+  0% { opacity: 0.75; width: 40px; height: 40px; }
+  100% { opacity: 0; width: 130vmax; height: 130vmax; border-width: 1px; }
+}
+@media (prefers-reduced-motion: reduce) { #intro { display: none !important; } }
+
 /* ---------- écran de connexion ---------- */
 #login {
   position: relative; z-index: 1;

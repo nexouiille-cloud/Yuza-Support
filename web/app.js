@@ -203,6 +203,27 @@ $$('img.brand').forEach((img) => {
   if (img.complete && img.naturalWidth === 0) swap();
 });
 
+/* ---------------- intro (entrée / refresh) ---------------- */
+let introShown = false;
+function playIntro() {
+  if (introShown) return;
+  introShown = true;
+  const intro = $('#intro');
+  if (!intro) return;
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  } catch {}
+  intro.hidden = false;
+  intro.classList.remove('done');
+  const finish = () => {
+    if (intro.classList.contains('done')) return;
+    intro.classList.add('done');
+    setTimeout(() => { intro.hidden = true; }, 600);
+  };
+  intro.addEventListener('click', finish, { once: true }); // cliquer = passer
+  setTimeout(finish, 2300);
+}
+
 function showView(name) {
   const id = 'view' + name.charAt(0).toUpperCase() + name.slice(1);
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
@@ -652,6 +673,7 @@ function handle(m) {
       buildReqRoleSelect();
       $('#login').classList.add('hidden');
       $('#app').classList.add('on');
+      playIntro();
       setConn('ok');
       setupNotifs();
       setStatus(`${m.name} · ${myRoleName || myLevelLabel}`);
