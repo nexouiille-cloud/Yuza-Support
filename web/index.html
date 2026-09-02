@@ -407,6 +407,21 @@
               <label class="setline">Salon bugs / reports <input type="text" id="setReportChan" placeholder="ID du salon" /></label>
             </div>
             <div class="setgrp">
+              <h4>Statut du bot Discord</h4>
+              <p class="muted">Le petit texte sous le nom du bot. Mets <b>une phrase par ligne</b> : le bot les fait défiler (~7&nbsp;s chacune). Vide = rien. S'applique tout de suite.</p>
+              <label class="setline" style="margin-bottom:6px">Type
+                <select id="setBotType" style="flex:0">
+                  <option value="custom">Perso (juste le texte)</option>
+                  <option value="playing">Joue à…</option>
+                  <option value="watching">Regarde…</option>
+                  <option value="listening">Écoute…</option>
+                </select>
+              </label>
+              <textarea id="setBotText" rows="3" spellcheck="false" placeholder="🎫 MP-moi pour ouvrir un ticket
+📋 Candidatures ouvertes
+⚡ VoltHorizon RP"></textarea>
+            </div>
+            <div class="setgrp">
               <h4>Guide de bienvenue</h4>
               <p class="muted">Le guide s'affiche à la 1re connexion de chaque staff et il est obligé de le lire. Tu peux le revoir :</p>
               <button id="obReview" class="linkbtn" type="button">Revoir le guide</button>

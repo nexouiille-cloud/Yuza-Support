@@ -246,6 +246,7 @@ export function getSettings() {
     sanctionChannelId: data.settings.sanctionChannelId ?? null,
     reportChannelId: data.settings.reportChannelId ?? null,
     categoryRoles: effectiveCategoryRoles(),
+    botStatus: effectiveBotStatus(),
   };
 }
 export function updateSettings(patch) {
@@ -355,6 +356,22 @@ export function effectiveSanctionChannel() {
 }
 export function effectiveReportChannel() {
   return String(data.settings.reportChannelId || '').trim();
+}
+// statut affiché sous le nom du bot ; plusieurs lignes = ça défile
+export function effectiveBotStatus() {
+  const s = data.settings.botStatus || {};
+  const raw = typeof s.text === 'string' ? s.text : config.botActivity || '';
+  const lines = String(raw)
+    .split('\n')
+    .map((x) => x.trim().slice(0, 120))
+    .filter(Boolean)
+    .slice(0, 12);
+  const type = ['custom', 'playing', 'watching', 'listening'].includes(s.type)
+    ? s.type
+    : ['custom', 'playing', 'watching', 'listening'].includes(config.botActivityType)
+      ? config.botActivityType
+      : 'custom';
+  return { text: raw, lines, type };
 }
 // responsables par catégorie : [{category, roleId}]
 export function effectiveCategoryRoles() {

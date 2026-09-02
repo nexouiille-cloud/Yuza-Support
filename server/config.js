@@ -110,6 +110,9 @@ export const config = {
   pushContact: process.env.PUSH_CONTACT || 'mailto:admin@example.com',
   // taille max d'une pièce jointe staff -> client (octets)
   maxAttachmentBytes: Number(process.env.MAX_ATTACHMENT_BYTES || 25 * 1024 * 1024),
+  // statut affiché sous le nom du bot (surchargé par les Réglages du site)
+  botActivity: (process.env.BOT_ACTIVITY || '').trim(),
+  botActivityType: (process.env.BOT_ACTIVITY_TYPE || 'custom').trim(),
 };
 
 export const maxLevel = config.staffTiers.length + 1;

@@ -1511,6 +1511,8 @@ function fillSettings(s, scope) {
   $('#setAnnounceChan').value = s.announceChannelId || '';
   $('#setSanctionChan').value = s.sanctionChannelId || '';
   $('#setReportChan').value = s.reportChannelId || '';
+  $('#setBotText').value = (s.botStatus && s.botStatus.text) || '';
+  $('#setBotType').value = (s.botStatus && s.botStatus.type) || 'custom';
   renderCatRoles(s.categoryRoles || []);
 }
 
@@ -1610,6 +1612,7 @@ $('#setSave').addEventListener('click', () => {
         announceChannelId: $('#setAnnounceChan').value.trim(),
         sanctionChannelId: $('#setSanctionChan').value.trim(),
         reportChannelId: $('#setReportChan').value.trim(),
+        botStatus: { text: $('#setBotText').value, type: $('#setBotType').value },
         categoryRoles: gatherCatRoles(),
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',

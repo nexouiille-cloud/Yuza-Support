@@ -7,6 +7,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  ActivityType,
 } from 'discord.js';
 import { config } from './config.js';
 import {
@@ -27,6 +28,7 @@ import {
   effectiveAnnounceChannel,
   effectiveSanctionChannel,
   effectiveReportChannel,
+  effectiveBotStatus,
   setTicketCategory,
   getTicket,
 } from './db.js';
@@ -91,7 +93,49 @@ bot.once(Events.ClientReady, async (c) => {
   }
   refreshMembers();
   setInterval(refreshMembers, 10 * 60000).unref?.();
+  applyBotStatus();
 });
+
+// Statut affiché sous le nom du bot. Plusieurs lignes = ça défile (~7 s).
+let statusTimer = null;
+export function applyBotStatus() {
+  clearInterval(statusTimer);
+  statusTimer = null;
+  if (!bot.user) return;
+  const { lines, type } = effectiveBotStatus();
+  const map = {
+    playing: ActivityType.Playing,
+    watching: ActivityType.Watching,
+    listening: ActivityType.Listening,
+    custom: ActivityType.Custom,
+  };
+  const t = map[type] ?? ActivityType.Custom;
+  const setLine = (text) => {
+    try {
+      const activity =
+        t === ActivityType.Custom
+          ? { name: text, type: ActivityType.Custom, state: text }
+          : { name: text, type: t };
+      bot.user.setPresence({ activities: [activity], status: 'online' });
+    } catch (e) {
+      console.error('[bot] statut échoué :', e?.message || e);
+    }
+  };
+  if (!lines.length) {
+    try { bot.user.setPresence({ activities: [], status: 'online' }); } catch {}
+    return;
+  }
+  let i = 0;
+  setLine(lines[0]);
+  if (lines.length > 1) {
+    // Discord limite les changements de statut : ~7 s est safe
+    statusTimer = setInterval(() => {
+      i = (i + 1) % lines.length;
+      setLine(lines[i]);
+    }, 7000);
+    statusTimer.unref?.();
+  }
+}
 
 /* ---------------- cache des membres du serveur ---------------- */
 let membersCache = [];

@@ -11,6 +11,7 @@ import {
   postAnnouncement,
   postSanction,
   postReport,
+  applyBotStatus,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -427,6 +428,14 @@ export function registerGateway(app) {
         if (typeof p.reportChannelId === 'string') {
           patch.reportChannelId = p.reportChannelId.trim();
         }
+        if (p.botStatus && typeof p.botStatus === 'object') {
+          patch.botStatus = {
+            text: String(p.botStatus.text || '').slice(0, 120),
+            type: ['custom', 'playing', 'watching', 'listening'].includes(p.botStatus.type)
+              ? p.botStatus.type
+              : 'custom',
+          };
+        }
         if (Array.isArray(p.categoryRoles)) {
           patch.categoryRoles = p.categoryRoles
             .map((r) => ({
@@ -437,6 +446,7 @@ export function registerGateway(app) {
             .slice(0, 40);
         }
         updateSettings(patch);
+        if (patch.botStatus) applyBotStatus();
         send(entry, { type: 'settings_saved', ok: true });
         broadcastAll({ type: 'categories', categories: effectiveCategories() });
         broadcastAll({ type: 'theme', theme: effectiveTheme() });
