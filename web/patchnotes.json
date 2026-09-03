@@ -3,6 +3,7 @@
     "date": "2026-09-02",
     "title": "Présence, modération & signature",
     "items": [
+      "Correction : sur téléphone, impossible de faire défiler certains écrans / de remonter en haut. La navigation est passée en barre du bas normale et le scroll interne des vues fonctionne partout.",
       "Statut du bot Discord réglable dans ⚙️ (le petit texte sous son nom). Plusieurs lignes = le bot les fait défiler toutes les ~7 s.",
       "Un ticket clôturé est vraiment terminé : si le client réécrit au bot, ça crée une NOUVELLE demande (conversation vierge). L'ancien ticket est archivé et téléchargeable depuis la fiche membre.",
       "Écran de démarrage animé du serveur + signature « développé par Yuza » (console, en-têtes HTTP, écran de connexion).",

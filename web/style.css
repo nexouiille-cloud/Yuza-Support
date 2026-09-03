@@ -255,7 +255,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .navbtn:hover .tip { opacity: 1; transform: translateX(0); }
 #rail .spacer { flex: 1; }
 
-#stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#stage { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
 .view { flex: 1; min-height: 0; display: none; flex-direction: column; }
 .view.active { display: flex; animation: viewin 0.28s var(--ease); }
@@ -654,9 +654,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- responsive / téléphone ---------- */
 @media (max-width: 760px) {
-  /* nav en barre du bas, pouce-friendly */
-  #app.on { flex-direction: column-reverse; }
+  /* nav en barre du bas, pouce-friendly (colonne normale + order, pas de column-reverse
+     qui casse le scroll interne des vues) */
+  #app.on { flex-direction: column; }
+  #stage { order: 1; min-height: 0; }
   #rail {
+    order: 2; flex-shrink: 0;
     width: 100%; flex-direction: row; justify-content: flex-start; align-items: center;
     border-right: 0; border-top: 1px solid var(--border);
     padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
@@ -718,6 +721,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 
   .srow .sl { width: 96px; }
   .stats-head h2 { font-size: 19px; }
+
+  /* guide de bienvenue : plein écran sur téléphone */
+  #onboarding { padding: 0; }
+  .ob-card { max-height: 100vh; height: 100%; border-radius: 0; border: 0; }
+  .ob-head { padding: 16px; }
+  .ob-body { padding: 4px 16px 16px; }
+  .ob-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
