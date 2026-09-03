@@ -12,6 +12,10 @@ import {
   postSanction,
   postReport,
   applyBotStatus,
+  postConvocation,
+  publishReprisePanel,
+  postShopAnnounce,
+  publishRecruit,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -68,6 +72,16 @@ import {
   isOnboarded,
   setOnboarded,
   resetOnboarded,
+  addConvocation,
+  listConvocations,
+  listPanels,
+  upsertPanel,
+  deletePanel,
+  effectiveRecruit,
+  setRecruit,
+  listHooks,
+  addHook,
+  deleteHook,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -428,6 +442,25 @@ export function registerGateway(app) {
         if (typeof p.reportChannelId === 'string') {
           patch.reportChannelId = p.reportChannelId.trim();
         }
+        if (typeof p.convoChannelId === 'string') {
+          patch.convoChannelId = p.convoChannelId.trim();
+        }
+        if (typeof p.shopChannelId === 'string') {
+          patch.shopChannelId = p.shopChannelId.trim();
+        }
+        if (p.recruit && typeof p.recruit === 'object') {
+          const r = effectiveRecruit();
+          patch.recruit = {
+            channelId: String(p.recruit.channelId ?? r.channelId).trim(),
+            roleId: String(p.recruit.roleId ?? r.roleId).trim(),
+            formUrl: String(p.recruit.formUrl ?? r.formUrl).trim(),
+            bannerUrl: String(p.recruit.bannerUrl ?? r.bannerUrl).trim(),
+            textOpen: String(p.recruit.textOpen ?? r.textOpen).slice(0, 2000),
+            textClosed: String(p.recruit.textClosed ?? r.textClosed).slice(0, 2000),
+            open: r.open,
+            messageId: r.messageId,
+          };
+        }
         if (p.botStatus && typeof p.botStatus === 'object') {
           patch.botStatus = {
             text: String(p.botStatus.text || '').slice(0, 120),
@@ -663,6 +696,144 @@ export function registerGateway(app) {
       if (msg.type === 'onboarding_reset') {
         resetOnboarded(session.uid); // pour soi-même : revoir le guide
         send(entry, { type: 'show_onboarding' });
+        return;
+      }
+
+      /* ---- convocations (tout le staff) ---- */
+      if (msg.type === 'convoke') {
+        const targetId = String(msg.targetId || '').trim();
+        const text = String(msg.text || '').trim();
+        if (!targetId) {
+          send(entry, { type: 'convoke_result', ok: false, error: 'cible manquante' });
+          return;
+        }
+        const now = Date.now();
+        entry.convo = (entry.convo || []).filter((t) => now - t < 60000);
+        if (entry.convo.length >= 10) {
+          send(entry, { type: 'convoke_result', ok: false, error: 'trop_rapide' });
+          return;
+        }
+        entry.convo.push(now);
+        const { isStaff } = await getStaffMember(session.uid);
+        if (!isStaff) {
+          send(entry, { type: 'kicked', reason: 'role_removed' });
+          socket.close();
+          return;
+        }
+        try {
+          await postConvocation({
+            targetId,
+            targetName: String(msg.targetName || targetId),
+            byName: session.name,
+            reason: msg.reason,
+            when: msg.when,
+            text,
+          });
+          addConvocation(targetId, msg.targetName, session.uid, session.name, msg.reason, msg.when, text);
+          send(entry, { type: 'convoke_result', ok: true });
+          broadcastAll({ type: 'convocations', list: listConvocations() });
+        } catch (err) {
+          send(entry, {
+            type: 'convoke_result',
+            ok: false,
+            error: /cannot send messages to this user/i.test(String(err?.message))
+              ? 'mp_fermes'
+              : String(err?.message || err),
+          });
+        }
+        return;
+      }
+      if (msg.type === 'get_convocations') {
+        send(entry, { type: 'convocations', list: listConvocations() });
+        return;
+      }
+
+      /* ---- panneaux « Reprise » (owner + grade max) ---- */
+      if (msg.type === 'get_panels') {
+        if (!entry.canModerate) return;
+        send(entry, { type: 'panels', list: listPanels() });
+        return;
+      }
+      if (msg.type === 'save_panel') {
+        if (!entry.canModerate) return;
+        const saved = upsertPanel(msg.panel || {});
+        for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+        send(entry, { type: 'panel_saved', ok: true, id: saved.id });
+        return;
+      }
+      if (msg.type === 'delete_panel') {
+        if (!entry.canModerate) return;
+        deletePanel(msg.id | 0);
+        for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+        return;
+      }
+      if (msg.type === 'publish_reprise') {
+        if (!entry.canModerate) return;
+        try {
+          const r = await publishReprisePanel(msg.id | 0);
+          for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+          send(entry, { type: 'reprise_published', ok: true, ...r });
+        } catch (e) {
+          send(entry, { type: 'reprise_published', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+
+      /* ---- boutique (owner + grade max) ---- */
+      if (msg.type === 'shop_announce') {
+        if (!entry.canModerate) {
+          send(entry, { type: 'shop_result', ok: false, error: 'forbidden' });
+          return;
+        }
+        try {
+          await postShopAnnounce({
+            title: String(msg.title || '').slice(0, 240),
+            text: String(msg.text || '').slice(0, 3500),
+            bannerUrl: String(msg.bannerUrl || '').trim(),
+            linkUrl: String(msg.linkUrl || '').trim(),
+            linkLabel: String(msg.linkLabel || '').slice(0, 60),
+          });
+          send(entry, { type: 'shop_result', ok: true });
+        } catch (e) {
+          send(entry, { type: 'shop_result', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+
+      /* ---- recrutement staff (owner + grade max) ---- */
+      if (msg.type === 'recruit_toggle') {
+        if (!entry.canModerate) return;
+        setRecruit({ open: !!msg.open });
+        try {
+          const r = await publishRecruit();
+          send(entry, { type: 'recruit_state', ...effectiveRecruit(), published: true, ...r });
+        } catch (e) {
+          send(entry, { type: 'recruit_state', ...effectiveRecruit(), published: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (msg.type === 'get_recruit') {
+        if (!entry.canModerate) return;
+        send(entry, { type: 'recruit_state', ...effectiveRecruit() });
+        return;
+      }
+
+      /* ---- webhooks entrants (owner) ---- */
+      if (msg.type === 'get_hooks') {
+        if (!entry.isOwner) return;
+        send(entry, { type: 'hooks', list: listHooks() });
+        return;
+      }
+      if (msg.type === 'add_hook') {
+        if (!entry.isOwner) return;
+        addHook(msg.kind, msg.channelId, msg.label);
+        send(entry, { type: 'hooks', list: listHooks() });
+        return;
+      }
+      if (msg.type === 'del_hook') {
+        if (!entry.isOwner) return;
+        deleteHook(msg.id | 0);
+        send(entry, { type: 'hooks', list: listHooks() });
         return;
       }
 

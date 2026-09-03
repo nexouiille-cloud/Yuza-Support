@@ -31,11 +31,12 @@ import {
   listMessages,
   effectiveTheme,
   getArchivedById,
+  getHookBySecret,
 } from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
 import { bootScreen, SIGNATURE } from './boot.js';
-import { bot } from './bot.js';
+import { bot, postShopAnnounce } from './bot.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = Fastify({ logger: false });
@@ -272,6 +273,38 @@ app.post('/api/attach', async (req, reply) => {
   const stored = addMessage(userId, 'staff', label, caption, [saved]);
   relayStaffMessage(stored, caption || `📎 ${saved.name}`);
   return { ok: true };
+});
+
+// --- Webhook entrant (Tebex, formulaires…) : POST /api/hook/<secret> ---
+// Corps JSON accepté : { title, text|description|content, url, image|banner }
+const hookHits = new Map(); // secret -> [timestamps]
+app.post('/api/hook/:secret', async (req, reply) => {
+  const h = getHookBySecret(req.params.secret);
+  if (!h) return reply.code(404).send({ error: 'unknown_hook' });
+  const now = Date.now();
+  const arr = (hookHits.get(h.secret) || []).filter((t) => now - t < 60000);
+  arr.push(now);
+  hookHits.set(h.secret, arr);
+  if (arr.length > 20) return reply.code(429).send({ error: 'rate_limited' });
+
+  const b = req.body || {};
+  const title = String(b.title || b.subject || b.name || 'Notification').slice(0, 240);
+  const text = String(b.text || b.description || b.content || b.message || '').slice(0, 3500);
+  const url = String(b.url || b.link || '').trim();
+  const image = String(b.image || b.banner || b.image_url || '').trim();
+  try {
+    await postShopAnnounce({
+      channelId: h.channelId,
+      title,
+      text,
+      bannerUrl: image,
+      linkUrl: url,
+      linkLabel: 'Ouvrir',
+    });
+    return { ok: true };
+  } catch (err) {
+    return reply.code(502).send({ error: String(err?.message || err) });
+  }
 });
 
 registerGateway(app);

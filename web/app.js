@@ -242,10 +242,16 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
   if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
-  if (name === 'mod' && ws && ws.readyState === 1 && canModerate)
+  if (name === 'mod' && ws && ws.readyState === 1 && canModerate) {
     ws.send(JSON.stringify({ type: 'get_sanctions' }));
+    ws.send(JSON.stringify({ type: 'get_panels' }));
+    ws.send(JSON.stringify({ type: 'get_recruit' }));
+    ws.send(JSON.stringify({ type: 'get_hooks' }));
+  }
   if (name === 'report' && ws && ws.readyState === 1 && canModerate)
     ws.send(JSON.stringify({ type: 'get_reports' }));
+  if (name === 'convoke' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'get_convocations' }));
   if (name === 'patch') loadPatchNotes();
 }
 
@@ -804,6 +810,7 @@ function handle(m) {
 
     case 'members':
       renderMembersView(m);
+      renderConvResults(m);
       break;
 
     case 'suggestions':
@@ -935,6 +942,52 @@ function handle(m) {
 
     case 'reports':
       renderReports(m.list || []);
+      break;
+
+    case 'convocations':
+      renderConvList(m.list || []);
+      break;
+
+    case 'convoke_result':
+      $('#convStatus').textContent = m.ok
+        ? '✓ convocation envoyée'
+        : m.error === 'mp_fermes'
+          ? '⚠ ce membre a ses MP fermés'
+          : m.error === 'trop_rapide'
+            ? 'trop de convocations d\'affilée, attends une minute'
+            : `échec : ${m.error || '?'}`;
+      if (m.ok) { $('#convText').value = ''; $('#convReason').value = ''; $('#convWhen').value = ''; }
+      $('#convSend').disabled = !convTarget;
+      break;
+
+    case 'panels':
+      renderPanelList(m.list || []);
+      break;
+
+    case 'panel_saved':
+      setStatus('Panneau enregistré.');
+      if (pendingPublishId && m.id && ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'publish_reprise', id: m.id }));
+      }
+      pendingPublishId = null;
+      break;
+
+    case 'reprise_published':
+      setStatus(m.ok ? (m.edited ? '✓ panneau mis à jour dans Discord' : '✓ panneau publié') : `échec panneau : ${m.error || '?'}`);
+      break;
+
+    case 'shop_result':
+      $('#shopStatus').textContent = m.ok ? '✓ annonce publiée' : `échec : ${m.error || '?'}`;
+      $('#shopSend').disabled = false;
+      if (m.ok) { $('#shopTitle').value = ''; $('#shopText').value = ''; }
+      break;
+
+    case 'recruit_state':
+      fillRecruit(m);
+      break;
+
+    case 'hooks':
+      renderHooks(m.list || []);
       break;
 
     case 'report_ok':
@@ -1511,6 +1564,8 @@ function fillSettings(s, scope) {
   $('#setAnnounceChan').value = s.announceChannelId || '';
   $('#setSanctionChan').value = s.sanctionChannelId || '';
   $('#setReportChan').value = s.reportChannelId || '';
+  $('#setConvoChan').value = s.convoChannelId || '';
+  $('#setShopChan').value = s.shopChannelId || '';
   $('#setBotText').value = (s.botStatus && s.botStatus.text) || '';
   $('#setBotType').value = (s.botStatus && s.botStatus.type) || 'custom';
   renderCatRoles(s.categoryRoles || []);
@@ -1612,6 +1667,8 @@ $('#setSave').addEventListener('click', () => {
         announceChannelId: $('#setAnnounceChan').value.trim(),
         sanctionChannelId: $('#setSanctionChan').value.trim(),
         reportChannelId: $('#setReportChan').value.trim(),
+        convoChannelId: $('#setConvoChan').value.trim(),
+        shopChannelId: $('#setShopChan').value.trim(),
         botStatus: { text: $('#setBotText').value, type: $('#setBotType').value },
         categoryRoles: gatherCatRoles(),
         theme: {
@@ -1716,6 +1773,283 @@ function renderLogins(list, online) {
     })
     .join('');
 }
+
+/* ---------------- convocation ---------------- */
+let convTarget = null;
+let convSearchTimer = null;
+$('#convSearch').addEventListener('input', (e) => {
+  clearTimeout(convSearchTimer);
+  const q = e.target.value.trim();
+  convSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+function renderConvResults(m) {
+  // réutilise la réponse "members" quand on est sur l'onglet convocation
+  if (!$('#viewConvoke').classList.contains('active')) return;
+  const box = $('#convResults');
+  if (!m.members || !m.members.length) { box.innerHTML = ''; return; }
+  box.innerHTML = m.members
+    .slice(0, 30)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
+    b.addEventListener('click', () => {
+      convTarget = { id: b.dataset.id, name: b.dataset.name };
+      $('#convTarget').textContent = `Convoquer : ${convTarget.name} (${convTarget.id})`;
+      $('#convTarget').classList.remove('hidden');
+      $('#convResults').innerHTML = '';
+      $('#convSearch').value = '';
+      $('#convSend').disabled = false;
+    }),
+  );
+}
+$('#convSend').addEventListener('click', () => {
+  if (!convTarget || !ws || ws.readyState !== 1) return;
+  $('#convSend').disabled = true;
+  $('#convStatus').textContent = 'envoi…';
+  ws.send(
+    JSON.stringify({
+      type: 'convoke',
+      targetId: convTarget.id,
+      targetName: convTarget.name,
+      reason: $('#convReason').value.trim(),
+      when: $('#convWhen').value.trim(),
+      text: $('#convText').value.trim(),
+    }),
+  );
+});
+function renderConvList(list) {
+  const box = $('#convList');
+  if (!box) return;
+  if (!list.length) { box.innerHTML = '<div class="muted">Aucune convocation.</div>'; return; }
+  box.innerHTML = list
+    .map(
+      (c) =>
+        `<div class="sug-item"><div class="si-main"><strong>${esc(c.targetName)}</strong>` +
+        (c.reason ? ` — ${esc(c.reason)}` : '') +
+        (c.when ? ` <span class="muted">(${esc(c.when)})</span>` : '') +
+        `<div class="si-by">par ${esc(c.byName)} · ${new Date(c.at).toLocaleString('fr-FR')}</div></div></div>`,
+    )
+    .join('');
+}
+
+/* ---------------- panneaux « Reprise » ---------------- */
+const PST = { ok: '🟩 dispo', no: '🟥 indispo', slot: '🟩 slot libre' };
+let panelsCache = [];
+function renderPanelList(list) {
+  panelsCache = list;
+  const box = $('#panelList');
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list
+        .map(
+          (p) =>
+            `<div class="panel-row"><span>${esc(p.name)}${p.messageId ? ' <span class="muted">· publié</span>' : ''}</span>` +
+            `<span class="pr-btns"><button class="linkbtn pr-edit" data-id="${p.id}" type="button">éditer</button>` +
+            `<button class="linkbtn pr-pub" data-id="${p.id}" type="button">publier</button>` +
+            `<button class="linkbtn pr-del" data-id="${p.id}" type="button">🗑</button></span></div>`,
+        )
+        .join('')
+    : '<div class="muted">Aucun panneau.</div>';
+  box.querySelectorAll('.pr-edit').forEach((b) =>
+    b.addEventListener('click', () => openPanelEditor(panelsCache.find((x) => x.id == b.dataset.id))),
+  );
+  box.querySelectorAll('.pr-pub').forEach((b) =>
+    b.addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'publish_reprise', id: Number(b.dataset.id) }));
+      setStatus('Publication du panneau…');
+    }),
+  );
+  box.querySelectorAll('.pr-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Supprimer ce panneau ? (le message Discord reste)'))
+        ws.send(JSON.stringify({ type: 'delete_panel', id: Number(b.dataset.id) }));
+    }),
+  );
+}
+$('#panelNew').addEventListener('click', () => openPanelEditor(null));
+function secRow(sec) {
+  const d = document.createElement('div');
+  d.className = 'pe-sec';
+  d.innerHTML =
+    `<input class="pe-shead" placeholder="Titre de section (ex : 🏛️ Organisation)" value="${esc(sec?.header || '')}" />` +
+    `<div class="pe-items"></div>` +
+    `<button class="linkbtn pe-add-item" type="button">+ ligne</button> ` +
+    `<button class="linkbtn pe-rm-sec" type="button">supprimer la section</button>`;
+  const itemsBox = d.querySelector('.pe-items');
+  const addItem = (it) => {
+    const r = document.createElement('div');
+    r.className = 'pe-item';
+    r.innerHTML =
+      `<input class="pe-ilabel" placeholder="Nom (ex : Cartel de Cayo Perico)" value="${esc(it?.label || '')}" />` +
+      `<select class="pe-istatus">` +
+      ['no', 'ok', 'slot'].map((k) => `<option value="${k}"${it?.status === k ? ' selected' : ''}>${PST[k]}</option>`).join('') +
+      `</select><button class="linkbtn pe-rm-item" type="button">✕</button>`;
+    r.querySelector('.pe-rm-item').addEventListener('click', () => r.remove());
+    itemsBox.appendChild(r);
+  };
+  (sec?.items && sec.items.length ? sec.items : [{}]).forEach(addItem);
+  d.querySelector('.pe-add-item').addEventListener('click', () => addItem({}));
+  d.querySelector('.pe-rm-sec').addEventListener('click', () => d.remove());
+  return d;
+}
+function openPanelEditor(p) {
+  const box = $('#panelEditor');
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<input type="hidden" id="peId" value="${p?.id || ''}" />` +
+    `<label class="setline">Nom interne <input type="text" id="peName" value="${esc(p?.name || 'Reprise Groupes')}" /></label>` +
+    `<label class="setline">Salon <input type="text" id="peChan" value="${esc(p?.channelId || '')}" placeholder="ID du salon" /></label>` +
+    `<label class="setline">Titre de l'embed <input type="text" id="peTitle" value="${esc(p?.title || '')}" placeholder="🕵️ • Reprise Groupes :" /></label>` +
+    `<textarea id="peDesc" rows="2" placeholder="Voici les différents groupes disponibles à la reprise :">${esc(p?.description || '')}</textarea>` +
+    `<label class="setline">Couleur <input type="color" id="peColor" value="${esc(p?.color || '#ff9d00')}" /></label>` +
+    `<label class="setline">Bannière (URL image) <input type="text" id="peBanner" value="${esc(p?.bannerUrl || '')}" placeholder="https://…/dossiers.png" /></label>` +
+    `<label class="setline">Icône (URL, en haut à droite) <input type="text" id="peIcon" value="${esc(p?.iconUrl || '')}" placeholder="https://…/logo.png" /></label>` +
+    `<label class="setline">Pied de page <input type="text" id="peFooter" value="${esc(p?.footer || '')}" placeholder="Pour une reprise, ouvre un ticket." /></label>` +
+    `<div id="peSections"></div>` +
+    `<button id="peAddSec" class="linkbtn" type="button">+ Ajouter une section</button>` +
+    `<div class="mm-actions" style="margin-top:14px">` +
+    `<button id="peSave" class="btn-accent" type="button">Enregistrer</button>` +
+    `<button id="pePublish" class="btn-accent" type="button">Enregistrer + Publier</button>` +
+    `<button id="peClose" class="linkbtn" type="button">Fermer</button></div>`;
+  const secBox = $('#peSections');
+  (p?.sections && p.sections.length ? p.sections : [{ header: '', items: [{}] }]).forEach((s) =>
+    secBox.appendChild(secRow(s)),
+  );
+  $('#peAddSec').addEventListener('click', () => secBox.appendChild(secRow({ items: [{}] })));
+  $('#peClose').addEventListener('click', () => box.classList.add('hidden'));
+  $('#peSave').addEventListener('click', () => savePanel(false));
+  $('#pePublish').addEventListener('click', () => savePanel(true));
+}
+function gatherPanel() {
+  const sections = [...$('#peSections').querySelectorAll('.pe-sec')].map((d) => ({
+    header: d.querySelector('.pe-shead').value.trim(),
+    items: [...d.querySelectorAll('.pe-item')]
+      .map((r) => ({
+        label: r.querySelector('.pe-ilabel').value.trim(),
+        status: r.querySelector('.pe-istatus').value,
+      }))
+      .filter((it) => it.label),
+  }));
+  return {
+    id: Number($('#peId').value) || undefined,
+    name: $('#peName').value.trim(),
+    channelId: $('#peChan').value.trim(),
+    title: $('#peTitle').value.trim(),
+    description: $('#peDesc').value.trim(),
+    color: $('#peColor').value,
+    bannerUrl: $('#peBanner').value.trim(),
+    iconUrl: $('#peIcon').value.trim(),
+    footer: $('#peFooter').value.trim(),
+    sections,
+  };
+}
+let pendingPublishId = null;
+function savePanel(alsoPublish) {
+  if (!ws || ws.readyState !== 1) return;
+  const panel = gatherPanel();
+  pendingPublishId = alsoPublish ? true : null;
+  ws.send(JSON.stringify({ type: 'save_panel', panel }));
+  setStatus('Enregistrement du panneau…');
+}
+/* ---------------- boutique ---------------- */
+$('#shopSend').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  $('#shopSend').disabled = true;
+  $('#shopStatus').textContent = 'publication…';
+  ws.send(
+    JSON.stringify({
+      type: 'shop_announce',
+      title: $('#shopTitle').value.trim(),
+      text: $('#shopText').value.trim(),
+      bannerUrl: $('#shopBanner').value.trim(),
+      linkUrl: $('#shopLink').value.trim(),
+      linkLabel: $('#shopLinkLabel').value.trim(),
+    }),
+  );
+});
+
+/* ---------------- recrutement ---------------- */
+function fillRecruit(r) {
+  $('#recChan').value = r.channelId || '';
+  $('#recRole').value = r.roleId || '';
+  $('#recForm').value = r.formUrl || '';
+  $('#recBanner').value = r.bannerUrl || '';
+  $('#recTextOpen').value = r.textOpen || '';
+  $('#recTextClosed').value = r.textClosed || '';
+  const st = $('#recState');
+  st.textContent = r.open ? '🟢 OUVERTS' : '🔴 FERMÉS';
+  st.classList.toggle('open', !!r.open);
+  $('#recToggle').textContent = r.open ? 'Fermer les recrutements' : 'Ouvrir les recrutements';
+  $('#recToggle').dataset.next = r.open ? '0' : '1';
+  if (r.error) setStatus(`Recrutement : ${r.error}`);
+  else if (r.published) setStatus(r.open ? '✓ recrutements ouverts (posté)' : '✓ recrutements fermés (posté)');
+}
+$('#recSave').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'save_settings',
+      patch: {
+        recruit: {
+          channelId: $('#recChan').value.trim(),
+          roleId: $('#recRole').value.trim(),
+          formUrl: $('#recForm').value.trim(),
+          bannerUrl: $('#recBanner').value.trim(),
+          textOpen: $('#recTextOpen').value,
+          textClosed: $('#recTextClosed').value,
+        },
+      },
+    }),
+  );
+  setStatus('Textes recrutement enregistrés.');
+});
+$('#recToggle').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  // enregistre d'abord les champs, puis toggle
+  $('#recSave').click();
+  ws.send(JSON.stringify({ type: 'recruit_toggle', open: $('#recToggle').dataset.next === '1' }));
+});
+
+/* ---------------- webhooks entrants ---------------- */
+function renderHooks(list) {
+  const box = $('#hookList');
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list
+        .map(
+          (h) =>
+            `<div class="hook-row"><div><strong>${esc(h.label || h.kind)}</strong> ` +
+            `<span class="muted">· salon ${esc(h.channelId || '?')} · ${h.hits || 0} appels</span>` +
+            `<div class="hook-url">${location.origin}/api/hook/${esc(h.secret)}</div></div>` +
+            `<button class="linkbtn hk-del" data-id="${h.id}" type="button">🗑</button></div>`,
+        )
+        .join('')
+    : '<div class="muted">Aucun webhook.</div>';
+  box.querySelectorAll('.hk-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Supprimer ce webhook ? Les services qui l\'utilisent cesseront de fonctionner.'))
+        ws.send(JSON.stringify({ type: 'del_hook', id: Number(b.dataset.id) }));
+    }),
+  );
+}
+$('#hookAdd').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'add_hook',
+      kind: 'generic',
+      label: $('#hookLabel').value.trim(),
+      channelId: $('#hookChan').value.trim(),
+    }),
+  );
+  $('#hookLabel').value = $('#hookChan').value = '';
+});
 
 /* ---------------- statut de présence + inactivité ---------------- */
 let manualStatus = 'online';

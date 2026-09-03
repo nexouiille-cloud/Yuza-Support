@@ -29,6 +29,12 @@ import {
   effectiveSanctionChannel,
   effectiveReportChannel,
   effectiveBotStatus,
+  effectiveConvoChannel,
+  effectiveShopChannel,
+  effectiveRecruit,
+  setRecruit,
+  getPanel,
+  setPanelMsg,
   setTicketCategory,
   getTicket,
 } from './db.js';
@@ -557,6 +563,126 @@ export async function postReport({ byName, kind, text }) {
   } catch (err) {
     console.error('[bot] trace signalement échouée :', err?.message || err);
   }
+}
+
+/* ---------------- convocations ---------------- */
+export async function postConvocation({ targetId, targetName, byName, reason, when, text }) {
+  const user = await bot.users.fetch(targetId);
+  const body =
+    text ||
+    `📌 **Convocation**\n` +
+      (reason ? `**Motif :** ${reason}\n` : '') +
+      (when ? `**Quand :** ${when}\n` : '') +
+      `\nMerci de te rendre disponible. — L'équipe`;
+  await user.send(body);
+  const ch = effectiveConvoChannel();
+  if (ch) {
+    try {
+      const c = await bot.channels.fetch(ch);
+      if (c?.isTextBased()) {
+        const embed = new EmbedBuilder()
+          .setTitle('📌 Convocation envoyée')
+          .setColor(0xff9d00)
+          .addFields(
+            { name: 'Membre', value: `${targetName} (<@${targetId}>)` },
+            { name: 'Par', value: byName || '—', inline: true },
+            ...(reason ? [{ name: 'Motif', value: reason, inline: true }] : []),
+            ...(when ? [{ name: 'Quand', value: when }] : []),
+          )
+          .setTimestamp(new Date());
+        await c.send({ embeds: [embed], allowedMentions: { users: [] } });
+      }
+    } catch {}
+  }
+}
+
+/* ---------------- panneaux « Reprise » ---------------- */
+const PANEL_EMOJI = { ok: '🟩', no: '🟥', slot: '🟩' };
+export async function publishReprisePanel(id) {
+  const p = getPanel(id);
+  if (!p) throw new Error('panneau introuvable');
+  if (!p.channelId) throw new Error('salon non configuré');
+  const ch = await bot.channels.fetch(p.channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon introuvable');
+  const embed = new EmbedBuilder()
+    .setColor(parseInt(p.color.slice(1), 16) || 0xff9d00);
+  if (p.title) embed.setTitle(p.title);
+  if (p.description) embed.setDescription(p.description);
+  if (p.iconUrl) embed.setThumbnail(p.iconUrl);
+  if (p.bannerUrl) embed.setImage(p.bannerUrl);
+  if (p.footer) embed.setFooter({ text: p.footer });
+  for (const s of p.sections) {
+    const value =
+      s.items.map((it) => `${PANEL_EMOJI[it.status] || '🟥'} ${it.label}`).join('\n') || '—';
+    embed.addFields({ name: s.header || '​', value: value.slice(0, 1024) });
+  }
+  if (p.messageId) {
+    try {
+      const m = await ch.messages.fetch(p.messageId);
+      await m.edit({ embeds: [embed] });
+      return { edited: true, messageId: m.id };
+    } catch {}
+  }
+  const m = await ch.send({ embeds: [embed] });
+  setPanelMsg(id, m.id);
+  return { edited: false, messageId: m.id };
+}
+
+/* ---------------- boutique ---------------- */
+export async function postShopAnnounce({ title, text, bannerUrl, linkUrl, linkLabel, channelId }) {
+  const chId = channelId || effectiveShopChannel();
+  if (!chId) throw new Error('salon boutique non configuré');
+  const ch = await bot.channels.fetch(chId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon boutique introuvable');
+  const embed = new EmbedBuilder().setColor(0x1fb6d6);
+  if (title) embed.setTitle(title);
+  if (text) embed.setDescription(text);
+  if (bannerUrl) embed.setImage(bannerUrl);
+  if (linkUrl) embed.addFields({ name: '​', value: `🔗 [${linkLabel || 'Voir la boutique'}](${linkUrl})` });
+  const row = linkUrl
+    ? [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel(linkLabel || 'Ouvrir la boutique').setURL(linkUrl),
+        ),
+      ]
+    : [];
+  await ch.send({ embeds: [embed], components: row });
+}
+
+/* ---------------- recrutement staff ---------------- */
+export async function publishRecruit() {
+  const r = effectiveRecruit();
+  if (!r.channelId) throw new Error('salon recrutement non configuré');
+  const ch = await bot.channels.fetch(r.channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon recrutement introuvable');
+  const embed = new EmbedBuilder()
+    .setTitle(r.open ? '✅ Recrutements staff — OUVERTS' : '❌ Recrutements staff — FERMÉS')
+    .setDescription(r.open ? r.textOpen : r.textClosed)
+    .setColor(r.open ? 0x43d162 : 0xff5f5f)
+    .setTimestamp(new Date());
+  if (r.bannerUrl) embed.setImage(r.bannerUrl);
+  if (r.open && r.formUrl) embed.addFields({ name: '​', value: `📝 [Formulaire de candidature](${r.formUrl})` });
+  const components =
+    r.open && r.formUrl
+      ? [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Formulaire de recrutement').setURL(r.formUrl),
+          ),
+        ]
+      : [];
+  const content = r.open && r.roleId ? `<@&${r.roleId}>` : undefined;
+  const allowedMentions = r.roleId ? { roles: [r.roleId] } : { parse: [] };
+
+  if (r.messageId) {
+    try {
+      const m = await ch.messages.fetch(r.messageId);
+      await m.edit({ content: content ?? '', embeds: [embed], components, allowedMentions });
+      return { edited: true, messageId: m.id };
+    } catch {}
+  }
+  const m = await ch.send({ content, embeds: [embed], components, allowedMentions });
+  setRecruit({ messageId: m.id });
+  return { edited: false, messageId: m.id };
 }
 
 export async function startBot() {

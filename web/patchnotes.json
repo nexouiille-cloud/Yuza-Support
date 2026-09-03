@@ -4,6 +4,10 @@
     "title": "Présence, modération & signature",
     "items": [
       "Correction : sur téléphone, impossible de faire défiler certains écrans / de remonter en haut. La navigation est passée en barre du bas normale et le scroll interne des vues fonctionne partout.",
+      "Onglet 📌 Convocation : convoque un membre (MP du bot + motif + horaire + trace salon), avec historique.",
+      "Modération : panneaux « Reprise » (Groupes illégaux / Entreprises) — embed éditable avec sections et lignes 🟩 dispo / 🟥 indispo, publiable et modifiable dans un salon.",
+      "Modération : annonce Boutique (embed + bannière + bouton lien) et bascule Recrutement staff OUVERTS / FERMÉS (embed + ping rôle + bannière + formulaire).",
+      "Webhooks entrants : donne une URL à Tebex / un formulaire, chaque envoi poste une annonce Discord automatiquement.",
       "Statut du bot Discord réglable dans ⚙️ (le petit texte sous son nom). Plusieurs lignes = le bot les fait défiler toutes les ~7 s.",
       "Un ticket clôturé est vraiment terminé : si le client réécrit au bot, ça crée une NOUVELLE demande (conversation vierge). L'ancien ticket est archivé et téléchargeable depuis la fiche membre.",
       "Écran de démarrage animé du serveur + signature « développé par Yuza » (console, en-têtes HTTP, écran de connexion).",

@@ -138,6 +138,7 @@
       <button class="navbtn" data-view="tickets"><span>🎫</span><span class="tip">Tickets</span></button>
       <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Équipe en ligne</span></button>
       <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membres du serveur</span></button>
+      <button class="navbtn" data-view="convoke"><span>📌</span><span class="tip">Convocation</span></button>
       <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestions</span></button>
       <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Signaler un bug</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
@@ -286,6 +287,29 @@
         <div id="sugList" class="hidden"></div>
       </section>
 
+      <!-- ---- Convocation ---- -->
+      <section id="viewConvoke" class="view">
+        <div class="stats-head"><h2>📌 Convocation</h2></div>
+        <p class="muted">Convoque un membre : il reçoit un MP du bot, et une trace est postée dans le salon convocations (⚙️).</p>
+        <div class="setgrp">
+          <input id="convSearch" type="search" placeholder="Chercher le membre (pseudo, rôle, ID)…" autocomplete="off" />
+          <div id="convResults" class="conv-results"></div>
+          <div id="convTarget" class="conv-target hidden"></div>
+          <label class="setline">Motif <input type="text" id="convReason" placeholder="ex : entretien, avertissement…" /></label>
+          <label class="setline">Quand <input type="text" id="convWhen" placeholder="ex : aujourd'hui 21h, sur le vocal Staff" /></label>
+          <p class="muted" style="margin:6px 0 4px">Message envoyé (laisse vide = généré à partir du motif / quand) :</p>
+          <textarea id="convText" rows="3" placeholder="Message perso (optionnel)"></textarea>
+          <div class="mm-actions">
+            <button id="convSend" class="btn-accent" type="button" disabled>Envoyer la convocation</button>
+            <span id="convStatus" class="who"></span>
+          </div>
+        </div>
+        <div class="setgrp">
+          <h4>Historique</h4>
+          <div id="convList"></div>
+        </div>
+      </section>
+
       <!-- ---- Signaler un bug / problème ---- -->
       <section id="viewReport" class="view">
         <div class="stats-head"><h2>🐞 Signaler un bug</h2></div>
@@ -405,6 +429,8 @@
               <label class="setline">Salon annonces <input type="text" id="setAnnounceChan" placeholder="ID du salon" /></label>
               <label class="setline">Salon sanctions <input type="text" id="setSanctionChan" placeholder="ID du salon" /></label>
               <label class="setline">Salon bugs / reports <input type="text" id="setReportChan" placeholder="ID du salon" /></label>
+              <label class="setline">Salon convocations <input type="text" id="setConvoChan" placeholder="ID du salon" /></label>
+              <label class="setline">Salon boutique <input type="text" id="setShopChan" placeholder="ID du salon" /></label>
             </div>
             <div class="setgrp">
               <h4>Statut du bot Discord</h4>
@@ -495,6 +521,54 @@
             <button id="sancAdd" class="btn-accent" type="button">Sanctionner</button>
           </div>
           <div id="sancList"></div>
+        </div>
+
+        <div class="setgrp">
+          <h4>📋 Panneaux « Reprise » (Groupes illégaux / Entreprises)</h4>
+          <p class="muted">Crée un embed Discord avec des sections et des lignes 🟩 dispo / 🟥 indispo, puis publie-le dans un salon. Re-publier met à jour le même message.</p>
+          <div id="panelList"></div>
+          <button id="panelNew" class="linkbtn" type="button">+ Nouveau panneau</button>
+          <div id="panelEditor" class="hidden"></div>
+        </div>
+
+        <div class="setgrp">
+          <h4>🛒 Boutique — annonce</h4>
+          <p class="muted">Poste une annonce embed dans le salon boutique (⚙️).</p>
+          <label class="setline">Titre <input type="text" id="shopTitle" maxlength="200" placeholder="Nouveau pack VIP disponible !" /></label>
+          <textarea id="shopText" rows="3" placeholder="Détaille la nouveauté / la remise…"></textarea>
+          <label class="setline">Bannière (URL image) <input type="text" id="shopBanner" placeholder="https://…/banniere.png" /></label>
+          <label class="setline">Lien <input type="text" id="shopLink" placeholder="https://ta-boutique.tebex.io/" /></label>
+          <label class="setline">Texte du bouton <input type="text" id="shopLinkLabel" maxlength="60" placeholder="Ouvrir la boutique" /></label>
+          <div class="mm-actions"><button id="shopSend" class="btn-accent" type="button">Publier l'annonce boutique</button><span id="shopStatus" class="who"></span></div>
+        </div>
+
+        <div class="setgrp">
+          <h4>🧑‍💼 Recrutement staff</h4>
+          <p class="muted">Un embed « OUVERTS / FERMÉS » dans un salon, avec ping du rôle et bannière. Le bouton ci-dessous publie / met à jour le message.</p>
+          <label class="setline">Salon <input type="text" id="recChan" placeholder="ID du salon" /></label>
+          <label class="setline">Rôle à ping <input type="text" id="recRole" placeholder="ID du rôle" /></label>
+          <label class="setline">Lien du formulaire <input type="text" id="recForm" placeholder="https://forms.gle/…" /></label>
+          <label class="setline">Bannière (URL) <input type="text" id="recBanner" placeholder="https://…/recrutement.png" /></label>
+          <p class="muted" style="margin:6px 0 2px">Texte quand OUVERT :</p>
+          <textarea id="recTextOpen" rows="2"></textarea>
+          <p class="muted" style="margin:8px 0 2px">Texte quand FERMÉ :</p>
+          <textarea id="recTextClosed" rows="2"></textarea>
+          <div class="mm-actions">
+            <button id="recSave" class="linkbtn" type="button">Enregistrer les textes</button>
+            <span id="recState" class="rec-state">—</span>
+            <button id="recToggle" class="btn-accent" type="button">Ouvrir / Fermer</button>
+          </div>
+        </div>
+
+        <div class="setgrp" id="hookGrp">
+          <h4>🔗 Webhooks entrants (owner)</h4>
+          <p class="muted">Donne une URL à un service externe (Tebex, formulaire…). À chaque envoi, ça poste une annonce dans le salon choisi. Corps JSON attendu : <code>{ title, text, url, image }</code>.</p>
+          <div class="sanction-add">
+            <input type="text" id="hookLabel" placeholder="Nom (ex : Tebex boutique)" />
+            <input type="text" id="hookChan" placeholder="ID du salon" />
+            <button id="hookAdd" class="btn-accent" type="button">Créer</button>
+          </div>
+          <div id="hookList"></div>
         </div>
       </section>
 

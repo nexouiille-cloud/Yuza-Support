@@ -449,7 +449,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #attachBtn { font-size: 15px; padding: 8px 11px; }
 
 /* ---------- vue stats ---------- */
-#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
+#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport, #viewConvoke { overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px); }
 #sugText { width: 100%; max-width: 620px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
 #sugText:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
 #sugList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; margin-top: 26px; }
@@ -643,6 +643,47 @@ button:disabled { opacity: 0.45; cursor: default; }
   .login-item .lg-when { grid-column: 2 / 4; color: var(--text-faint); }
 }
 
+/* ---------- convocation ---------- */
+.conv-results { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; max-width: 620px; }
+.conv-r { font-size: 12px; padding: 6px 10px; }
+.conv-target { font-weight: 600; color: var(--accent-bright); margin: 6px 0 10px; }
+#viewConvoke textarea, #viewConvoke input[type="search"] {
+  width: 100%; max-width: 620px; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 9px 12px; border-radius: 10px; font: inherit; resize: vertical;
+}
+#convList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; }
+
+/* ---------- panneaux Reprise ---------- */
+#panelList { display: flex; flex-direction: column; gap: 6px; max-width: 620px; margin-bottom: 8px; }
+.panel-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; font-size: 13px;
+}
+.panel-row .pr-btns { display: flex; gap: 8px; }
+#panelEditor { max-width: 620px; margin-top: 12px; border: 1px solid var(--border-strong); border-radius: 12px; padding: 14px; background: var(--bg-2); }
+#panelEditor textarea, #panelEditor input[type="text"] {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 11px; border-radius: 8px; font: inherit;
+}
+.pe-sec { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin: 10px 0; }
+.pe-shead { margin-bottom: 8px; }
+.pe-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+.pe-item { display: flex; gap: 6px; align-items: center; }
+.pe-item .pe-ilabel { flex: 1; }
+.pe-item .pe-istatus { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px; font: inherit; font-size: 12px; }
+
+/* ---------- boutique / recrutement / hooks ---------- */
+#viewMod textarea, #viewMod .setline input[type="text"] {
+  width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 8px 11px; border-radius: 8px; font: inherit;
+}
+#viewMod textarea { max-width: 620px; resize: vertical; }
+.rec-state { font-weight: 700; color: var(--danger); }
+.rec-state.open { color: var(--ok); }
+#hookList { display: flex; flex-direction: column; gap: 8px; max-width: 620px; }
+.hook-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 12px; }
+.hook-url { font-family: ui-monospace, monospace; color: var(--accent-bright); word-break: break-all; margin-top: 4px; }
+
 /* ---------- notes de version ---------- */
 #patchList { display: flex; flex-direction: column; gap: 18px; max-width: 720px; margin-top: 12px; }
 .patch { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
@@ -673,7 +714,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 
   /* vues plein écran, marges resserrées */
   #viewHome { padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport { padding: 22px 14px; }
+  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport, #viewConvoke { padding: 22px 14px; }
   .home-hi { font-size: 22px; }
   .cards { grid-template-columns: 1fr; gap: 12px; }
   .card { min-height: 96px; padding: 16px; }

@@ -1,6 +1,7 @@
 // Stockage simple sur fichier JSON (aucune dépendance native).
 // Suffisant pour un système de tickets ; migrable vers SQLite plus tard.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { config } from './config.js';
@@ -10,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [] };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [], convocations: [], panels: [], hooks: [] };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -27,6 +28,9 @@ if (existsSync(FILE)) {
     data.reports ||= [];
     data.onboarded ||= {};
     data.archive ||= [];
+    data.convocations ||= [];
+    data.panels ||= [];
+    data.hooks ||= [];
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -245,6 +249,9 @@ export function getSettings() {
     announceChannelId: data.settings.announceChannelId ?? null,
     sanctionChannelId: data.settings.sanctionChannelId ?? null,
     reportChannelId: data.settings.reportChannelId ?? null,
+    convoChannelId: data.settings.convoChannelId ?? null,
+    shopChannelId: data.settings.shopChannelId ?? null,
+    recruit: effectiveRecruit(),
     categoryRoles: effectiveCategoryRoles(),
     botStatus: effectiveBotStatus(),
   };
@@ -326,6 +333,139 @@ export function effectiveFlood() {
 export function markAutoWarned(userId) {
   const t = data.tickets[userId];
   if (t) { t.auto_warned = true; save(); }
+}
+
+/* ---------------- convocations ---------------- */
+export function effectiveConvoChannel() {
+  return String(data.settings.convoChannelId || '').trim();
+}
+export function addConvocation(targetId, targetName, by, byName, reason, when, text) {
+  const c = {
+    id: ++data.seq,
+    targetId: String(targetId),
+    targetName: String(targetName || targetId),
+    by: String(by || ''),
+    byName: String(byName || ''),
+    reason: String(reason || '').slice(0, 300),
+    when: String(when || '').slice(0, 120),
+    text: String(text || '').slice(0, 1500),
+    at: Date.now(),
+  };
+  data.convocations.push(c);
+  if (data.convocations.length > 1000) data.convocations = data.convocations.slice(-1000);
+  save();
+  return c;
+}
+export function listConvocations(limit = 100) {
+  return [...data.convocations].sort((a, b) => b.at - a.at).slice(0, limit);
+}
+
+/* ---------------- boutique ---------------- */
+export function effectiveShopChannel() {
+  return String(data.settings.shopChannelId || '').trim();
+}
+
+/* ---------------- recrutement staff ---------------- */
+export function effectiveRecruit() {
+  const r = data.settings.recruit || {};
+  return {
+    channelId: String(r.channelId || '').trim(),
+    roleId: String(r.roleId || '').trim(),
+    messageId: String(r.messageId || '').trim(),
+    open: !!r.open,
+    formUrl: String(r.formUrl || '').trim(),
+    bannerUrl: String(r.bannerUrl || '').trim(),
+    textOpen: String(r.textOpen || 'Les recrutements staff sont **OUVERTS** ✅\nRemplis le formulaire ci-dessous puis ouvre un ticket « Rc Staff ».').slice(0, 2000),
+    textClosed: String(r.textClosed || 'Les recrutements staff sont **FERMÉS** ❌\nReviens plus tard, ou surveille les annonces.').slice(0, 2000),
+  };
+}
+export function setRecruit(patch) {
+  const cur = data.settings.recruit || {};
+  data.settings.recruit = { ...cur, ...patch };
+  save();
+  return effectiveRecruit();
+}
+
+/* ---------------- panneaux « Reprise » (Groupes / Entreprises) ---------------- */
+const PANEL_STATUS = ['ok', 'no', 'slot'];
+function cleanPanel(p) {
+  return {
+    id: p.id,
+    name: String(p.name || 'Panneau').slice(0, 80),
+    channelId: String(p.channelId || '').trim(),
+    messageId: String(p.messageId || '').trim(),
+    title: String(p.title || '').slice(0, 240),
+    description: String(p.description || '').slice(0, 1500),
+    color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ff9d00',
+    bannerUrl: String(p.bannerUrl || '').trim().slice(0, 500),
+    iconUrl: String(p.iconUrl || '').trim().slice(0, 500),
+    footer: String(p.footer || '').slice(0, 300),
+    sections: (Array.isArray(p.sections) ? p.sections : []).slice(0, 20).map((s) => ({
+      header: String(s.header || '').slice(0, 120),
+      items: (Array.isArray(s.items) ? s.items : []).slice(0, 40).map((it) => ({
+        label: String(it.label || '').slice(0, 120),
+        status: PANEL_STATUS.includes(it.status) ? it.status : 'no',
+      })).filter((it) => it.label),
+    })).filter((s) => s.header || s.items.length),
+    updated_at: Date.now(),
+  };
+}
+export function listPanels() {
+  return data.panels.map((p) => ({ ...p }));
+}
+export function getPanel(id) {
+  return data.panels.find((p) => p.id === (id | 0)) || null;
+}
+export function upsertPanel(p) {
+  if (p && p.id) {
+    const i = data.panels.findIndex((x) => x.id === (p.id | 0));
+    if (i !== -1) {
+      const keepMsg = data.panels[i].messageId;
+      data.panels[i] = cleanPanel({ ...p, messageId: p.messageId ?? keepMsg });
+      save();
+      return data.panels[i];
+    }
+  }
+  const created = cleanPanel({ ...p, id: ++data.seq, messageId: '' });
+  data.panels.push(created);
+  save();
+  return created;
+}
+export function setPanelMsg(id, messageId) {
+  const p = getPanel(id);
+  if (p) { p.messageId = messageId ? String(messageId) : ''; save(); }
+}
+export function deletePanel(id) {
+  const i = data.panels.findIndex((p) => p.id === (id | 0));
+  if (i !== -1) { data.panels.splice(i, 1); save(); }
+}
+
+/* ---------------- webhooks entrants (Tebex, formulaires…) ---------------- */
+export function listHooks() {
+  return data.hooks.map((h) => ({ ...h }));
+}
+export function addHook(kind, channelId, label) {
+  const h = {
+    id: ++data.seq,
+    secret: randomBytes(18).toString('hex'),
+    kind: ['shop', 'generic'].includes(kind) ? kind : 'generic',
+    channelId: String(channelId || '').trim(),
+    label: String(label || '').slice(0, 80),
+    at: Date.now(),
+    hits: 0,
+  };
+  data.hooks.push(h);
+  save();
+  return h;
+}
+export function deleteHook(id) {
+  const i = data.hooks.findIndex((h) => h.id === (id | 0));
+  if (i !== -1) { data.hooks.splice(i, 1); save(); }
+}
+export function getHookBySecret(secret) {
+  const h = data.hooks.find((x) => x.secret === String(secret || ''));
+  if (h) { h.hits = (h.hits || 0) + 1; save(); }
+  return h || null;
 }
 
 /* ---------------- panneau « Contacter le support » ---------------- */
