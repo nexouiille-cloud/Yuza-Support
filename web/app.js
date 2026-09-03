@@ -377,10 +377,20 @@ function renderReports(list) {
   box.innerHTML = '';
   for (const r of list) {
     const el = document.createElement('div');
-    el.className = 'sug-item' + (r.done ? ' done' : '');
+    el.className = 'sug-item rep-item' + (r.done ? ' done' : '');
+    const replies = (r.replies || [])
+      .map(
+        (rp) =>
+          `<div class="rep-reply"><strong>${esc(rp.byName)}</strong> · ${new Date(rp.at).toLocaleString('fr-FR')}<br>${esc(rp.text)}</div>`,
+      )
+      .join('');
     el.innerHTML =
       `<div class="si-main"><span class="rep-tag ${r.kind}">${r.kind === 'bug' ? '🐞 bug' : '⚠ autre'}</span> ${esc(r.text)}` +
-      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}</div></div>` +
+      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}</div>` +
+      (replies ? `<div class="rep-thread">${replies}</div>` : '') +
+      `<div class="rep-replybar"><input class="rep-in" type="text" placeholder="Répondre à ${esc(r.by)}…" />` +
+      `<button class="rep-send btn-accent" type="button">Envoyer</button></div>` +
+      `</div>` +
       `<div class="si-btns"><button class="linkbtn si-done" type="button">${r.done ? '↩' : '✓'}</button>` +
       `<button class="linkbtn si-del" type="button">🗑</button></div>`;
     el.querySelector('.si-done').addEventListener('click', () =>
@@ -389,6 +399,18 @@ function renderReports(list) {
     el.querySelector('.si-del').addEventListener('click', () => {
       if (window.confirm('Supprimer ce signalement ?'))
         ws.send(JSON.stringify({ type: 'report_del', id: r.id }));
+    });
+    const sendReply = () => {
+      const inp = el.querySelector('.rep-in');
+      const t = inp.value.trim();
+      if (!t || !ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'report_reply', id: r.id, text: t }));
+      inp.value = '';
+      setStatus('Réponse envoyée en MP à ' + r.by + '.');
+    };
+    el.querySelector('.rep-send').addEventListener('click', sendReply);
+    el.querySelector('.rep-in').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendReply();
     });
     box.appendChild(el);
   }

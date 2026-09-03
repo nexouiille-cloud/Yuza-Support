@@ -66,6 +66,7 @@ import {
   recordLogin,
   listFirstSeen,
   addReport,
+  addReportReply,
   listReports,
   setReportDone,
   deleteReport,
@@ -682,6 +683,22 @@ export function registerGateway(app) {
         if (!entry.canModerate) return;
         if (msg.type === 'report_del') deleteReport(msg.id | 0);
         else setReportDone(msg.id | 0, !!msg.done);
+        for (const c of clients) {
+          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
+        }
+        return;
+      }
+      if (msg.type === 'report_reply') {
+        if (!entry.canModerate) return;
+        const text = String(msg.text || '').trim();
+        if (!text) return;
+        const r = addReportReply(msg.id | 0, session.uid, session.name, text);
+        if (r && r.byId) {
+          sendDM(
+            r.byId,
+            `💬 **Réponse à ton signalement** (${r.kind === 'bug' ? '🐞 bug' : '⚠ problème'}) :\n> ${r.text.slice(0, 120)}\n\n**${session.name} :** ${text}`,
+          ).catch(() => {});
+        }
         for (const c of clients) {
           if (c.canModerate) send(c, { type: 'reports', list: listReports() });
         }

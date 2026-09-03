@@ -540,8 +540,22 @@ export function addReport(byId, byName, text, kind) {
     text: String(text).slice(0, 1500),
     at: Date.now(),
     done: false,
+    replies: [],
   };
   data.reports.push(r);
+  save();
+  return r;
+}
+export function addReportReply(id, by, byName, text) {
+  const r = data.reports.find((x) => x.id === (id | 0));
+  if (!r) return null;
+  r.replies ||= [];
+  r.replies.push({
+    by: String(by || ''),
+    byName: String(byName || ''),
+    text: String(text || '').slice(0, 1500),
+    at: Date.now(),
+  });
   save();
   return r;
 }
