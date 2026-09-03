@@ -410,6 +410,9 @@ function cleanPanel(p) {
     iconUrl: String(p.iconUrl || '').trim().slice(0, 800),
     footer: String(p.footer || '').slice(0, 300),
     statusStyle: ['circle', 'square'].includes(p.statusStyle) ? p.statusStyle : 'circle',
+    emojiOk: String(p.emojiOk || '').trim().replace(/\s+/g, '').slice(0, 60),
+    emojiNo: String(p.emojiNo || '').trim().replace(/\s+/g, '').slice(0, 60),
+    emojiSlot: String(p.emojiSlot || '').trim().replace(/\s+/g, '').slice(0, 60),
     sections: (Array.isArray(p.sections) ? p.sections : []).slice(0, 20).map((s) => ({
       header: String(s.header || '').slice(0, 120),
       items: (Array.isArray(s.items) ? s.items : []).slice(0, 40).map((it) => ({

@@ -633,11 +633,15 @@ export async function publishReprisePanel(id) {
 
   // sections dans la description (rendu propre, comme sur les panneaux Horizon)
   const EM = PANEL_EMOJI[p.statusStyle] || PANEL_EMOJI.circle;
+  const eOk = p.emojiOk || EM.ok;
+  const eNo = p.emojiNo || EM.no;
+  const eSlot = p.emojiSlot || p.emojiOk || EM.slot;
+  const emFor = (st) => (st === 'no' ? eNo : st === 'slot' ? eSlot : eOk);
   let desc = p.description ? p.description.trim() + '\n' : '';
   for (const s of p.sections) {
     if (s.header) desc += `\n**${s.header}**\n`;
     else desc += '\n';
-    desc += s.items.map((it) => `${EM[it.status] || EM.no} ${it.label}`).join('\n') + '\n';
+    desc += s.items.map((it) => `${emFor(it.status)} ${it.label}`).join('\n') + '\n';
   }
   embed.setDescription((desc.trim() || '—').slice(0, 4096));
 

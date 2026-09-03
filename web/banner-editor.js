@@ -156,51 +156,54 @@
       `<div class="be-form"></div>` +
       `<div class="be-right"><canvas class="be-cv" width="1200" height="400"></canvas>` +
       `<div class="be-actions"><button class="btn-accent be-dl" type="button">💾 PNG</button>` +
-      `<button class="linkbtn be-webm" type="button">🎞️ WEBM animé (3 s)</button>` +
+      `<button class="linkbtn be-gif" type="button">🎞️ GIF animé</button>` +
+      `<button class="linkbtn be-webm" type="button">WEBM (3 s)</button>` +
       `<button class="linkbtn be-dlall" type="button">Tout en PNG</button>` +
       `<button class="linkbtn be-reset" type="button">Réinitialiser cet onglet</button></div>` +
+      `<p class="muted">Pour une bannière <b>animée dans l'embed Discord</b> : exporte le <b>GIF</b>, upload-le, colle son lien dans le champ « Bannière » du panneau.</p>` +
       `<p class="muted">1200×400. Télécharge, puis upload sur Discord et colle l'URL dans le champ « Bannière » du panneau.</p></div></div>`;
 
     const $ = (s) => root.querySelector(s);
     const cv = $('.be-cv'), ctx = cv.getContext('2d');
     let baseImg = null, raf = null, t0 = 0;
 
-    // braises mobiles + sweep + halo, dessinés au canvas par-dessus l'image de base
-    function overlay(t) {
+    // braises mobiles + sweep + halo, dessinés par-dessus l'image de base (sur n'importe quel contexte 2D)
+    function drawOverlayOn(g2, t) {
       const b = state[cur];
       if (!b.anim) return;
       const spd = (+b.animSpeed || 5) / 5;
       if (b.animGlow) {
-        const g = ctx.createRadialGradient(W / 2, H * 1.15, 0, W / 2, H * 1.15, H * 1.1);
-        const a = 0.10 + 0.09 * (0.5 + 0.5 * Math.sin(t / 900 * spd));
+        const g = g2.createRadialGradient(W / 2, H * 1.15, 0, W / 2, H * 1.15, H * 1.1);
+        const a = 0.10 + 0.09 * (0.5 + 0.5 * Math.sin((t / 900) * spd));
         g.addColorStop(0, hexA(b.glow, a)); g.addColorStop(1, hexA(b.glow, 0));
-        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+        g2.fillStyle = g; g2.fillRect(0, 0, W, H);
       }
       if (b.animEmbers) {
         const N = Math.max(6, +b.embers || 12);
-        ctx.save();
+        g2.save();
         for (let i = 0; i < N; i++) {
           const seed = i * 137.5, sp = 18 + (i % 5) * 9;
           const x = (seed * 7.3) % W;
           const y = H + 30 - (((t / 1000) * sp * spd + seed) % (H + 120));
           const r = 1.5 + (i % 3);
           const a = Math.max(0, Math.min(1, (y / H) * 0.9)) * (0.5 + 0.5 * Math.sin(t / 300 + i));
-          ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
-          ctx.fillStyle = hexA(b.glow, 0.9 * a); ctx.shadowColor = b.glow; ctx.shadowBlur = r * 6;
-          ctx.fill();
+          g2.beginPath(); g2.arc(x, y, r, 0, 7);
+          g2.fillStyle = hexA(b.glow, 0.9 * a); g2.shadowColor = b.glow; g2.shadowBlur = r * 6;
+          g2.fill();
         }
-        ctx.restore();
+        g2.restore();
       }
       if (b.animSweep) {
         const x = -500 + (((t / 14) * spd) % (W + 1000));
-        ctx.save();
-        ctx.translate(x, 0); ctx.rotate(-0.31);
-        const g = ctx.createLinearGradient(0, 0, 260, 0);
+        g2.save();
+        g2.translate(x, 0); g2.rotate(-0.31);
+        const g = g2.createLinearGradient(0, 0, 260, 0);
         g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.13)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = g; ctx.fillRect(0, -200, 260, H + 400);
-        ctx.restore();
+        g2.fillStyle = g; g2.fillRect(0, -200, 260, H + 400);
+        g2.restore();
       }
     }
+    const overlay = (t) => drawOverlayOn(ctx, t);
     function loop(ts) {
       if (!t0) t0 = ts;
       const t = ts - t0;
@@ -345,6 +348,48 @@
     $('.be-dl').onclick = () => download(cur);
     $('.be-dlall').onclick = () => { let i = 0; const step = () => { if (i >= state.length) return; download(i++, () => setTimeout(step, 500)); }; step(); };
     $('.be-reset').onclick = () => { state[cur] = DEF({ ...PRESETS[cur] }); persist(); renderForm(); draw(); };
+    $('.be-gif').onclick = function () {
+      const btn = this;
+      if (typeof GIF === 'undefined') { alert('Encodeur GIF non chargé, recharge la page.'); return; }
+      const GW = 900, GH = 300, FRAMES = 20, DELAY = 90; // ~1,8 s de boucle
+      // image de base (SVG statique complet) à la taille du GIF
+      const b = state[cur];
+      const savedAnim = b.anim;
+      b.anim = true; // le GIF est forcément animé
+      const bimg = new Image();
+      bimg.onload = () => {
+        const gif = new GIF({ workers: 2, quality: 14, width: GW, height: GH, workerScript: '/vendor/gif.worker.js', repeat: 0, background: '#000' });
+        const fc = document.createElement('canvas'); fc.width = GW; fc.height = GH;
+        const fx = fc.getContext('2d');
+        const sx = GW / W, sy = GH / H;
+        for (let i = 0; i < FRAMES; i++) {
+          const t = i * DELAY;
+          fx.setTransform(1, 0, 0, 1, 0, 0);
+          fx.clearRect(0, 0, GW, GH);
+          fx.drawImage(bimg, 0, 0, GW, GH);
+          fx.save();
+          fx.scale(sx, sy); // les effets sont calculés en coord. 1200×400
+          drawOverlayOn(fx, t);
+          fx.restore();
+          gif.addFrame(fc, { delay: DELAY, copy: true });
+        }
+        gif.on('progress', (p) => { btn.textContent = 'GIF ' + Math.round(p * 100) + '%'; });
+        gif.on('finished', (blob) => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'banniere-' + b.key + '.gif';
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+          btn.textContent = '🎞️ GIF animé'; btn.disabled = false;
+          b.anim = savedAnim; draw();
+        });
+        btn.textContent = 'GIF 0%'; btn.disabled = true;
+        gif.render();
+      };
+      bimg.onerror = () => alert('Rendu impossible.');
+      bimg.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgFor(b, { baseForAnim: true }))));
+    };
+
     $('.be-webm').onclick = function () {
       const btn = this;
       if (!cv.captureStream || typeof MediaRecorder === 'undefined') { alert('Ton navigateur ne permet pas l\'export vidéo.'); return; }

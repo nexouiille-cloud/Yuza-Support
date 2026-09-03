@@ -1953,7 +1953,10 @@ function openPanelEditor(p) {
     `<label class="setline">Pastilles <select id="peStatus">` +
     `<option value="circle"${(p?.statusStyle || 'circle') === 'circle' ? ' selected' : ''}>🟢 🔴 ronds</option>` +
     `<option value="square"${p?.statusStyle === 'square' ? ' selected' : ''}>🟩 🟥 carrés</option></select></label>` +
-    `<p class="muted" style="margin:2px 0 8px">La bannière et l'icône sont téléchargées puis jointes au message → elles s'affichent toujours. Mets un lien direct vers une image (finissant par .png / .jpg).</p>` +
+    `<label class="setline">Emoji « dispo » <input type="text" id="peEmOk" value="${esc(p?.emojiOk || '')}" placeholder="<a:vert:123…>  (vide = pastille)" /></label>` +
+    `<label class="setline">Emoji « indispo » <input type="text" id="peEmNo" value="${esc(p?.emojiNo || '')}" placeholder="<a:rouge:123…>" /></label>` +
+    `<label class="setline">Emoji « slot libre » <input type="text" id="peEmSlot" value="${esc(p?.emojiSlot || '')}" placeholder="(vide = comme « dispo »)" /></label>` +
+    `<p class="muted" style="margin:2px 0 8px">Emoji perso : dans Discord tape <code>\\:nom:</code> (ex <code>\\:vert:</code>) puis colle ce que ça donne (<code>&lt;a:vert:123…&gt;</code>). Le bot doit être sur le serveur de l'emoji. La bannière/icône sont téléchargées et jointes au message → mets un lien direct vers une image (<code>.png</code>, <code>.jpg</code> ou <code>.gif</code> pour une bannière animée).</p>` +
     `<div id="peSections"></div>` +
     `<button id="peAddSec" class="linkbtn" type="button">+ Ajouter une section</button>` +
     `<div class="mm-actions" style="margin-top:14px">` +
@@ -1990,6 +1993,9 @@ function gatherPanel() {
     iconUrl: $('#peIcon').value.trim(),
     footer: $('#peFooter').value.trim(),
     statusStyle: $('#peStatus').value,
+    emojiOk: $('#peEmOk').value.trim(),
+    emojiNo: $('#peEmNo').value.trim(),
+    emojiSlot: $('#peEmSlot').value.trim(),
     sections,
   };
 }
