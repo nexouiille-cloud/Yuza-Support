@@ -471,6 +471,26 @@ button:disabled { opacity: 0.45; cursor: default; }
 .rep-ok { color: var(--ok); font-weight: 700; }
 #deleteBtn { color: var(--danger); border-color: rgba(255,95,95,.4); }
 #deleteBtn:hover { background: rgba(255,95,95,.14); border-color: var(--danger); }
+
+/* ---------- macros ---------- */
+#composer { position: relative; }
+#macroBtn { font-size: 15px; padding: 8px 11px; }
+#macroMenu {
+  position: absolute; left: 12px; right: 12px; bottom: calc(100% + 6px);
+  background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow); max-height: 300px; overflow-y: auto; z-index: 40; padding: 6px;
+}
+.macro-i {
+  display: block; width: 100%; text-align: left; border: 0; background: transparent;
+  padding: 8px 10px; border-radius: 8px;
+}
+.macro-i:hover { background: var(--surface-3); }
+.macro-i b { display: block; color: var(--accent-bright); font-size: 13px; }
+.macro-i span { display: block; color: var(--text-dim); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setmacro { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+.setmacro .mn { flex: 0 0 150px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; font: inherit; }
+.setmacro .mt { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; font: inherit; resize: vertical; }
+.setmacro .rm { flex: 0; padding: 6px 10px; }
 .rep-replybar { display: flex; gap: 6px; margin-top: 8px; }
 .rep-in { flex: 1; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 8px; font: inherit; font-size: 12px; }
 .rep-in:focus { outline: 0; border-color: var(--accent); }

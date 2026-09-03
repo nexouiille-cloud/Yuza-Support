@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { config } from './config.js';
+import { config, maxLevel } from './config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // DATA_DIR permet de placer les données sur un disque persistant (Railway, etc.)
@@ -263,7 +263,33 @@ export function getSettings() {
     recruit: effectiveRecruit(),
     categoryRoles: effectiveCategoryRoles(),
     botStatus: effectiveBotStatus(),
+    perms: effectivePerms(),
+    macros: effectiveMacros(),
   };
+}
+
+/* ---------------- permissions par grade + macros ---------------- */
+export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels'];
+export function effectivePerms() {
+  const hi = Math.max(2, maxLevel - 2); // "directeur staff" par défaut
+  const top = Math.max(2, maxLevel); // "voltgroup" par défaut
+  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top };
+  const s = data.settings.perms || {};
+  const out = {};
+  for (const k of PERM_KEYS) {
+    const v = Number(s[k]);
+    out[k] = Number.isFinite(v) && v >= 1 && v <= 999 ? Math.round(v) : d[k];
+  }
+  return out;
+}
+export function effectiveMacros() {
+  const m = data.settings.macros;
+  return Array.isArray(m)
+    ? m
+        .map((x) => ({ name: String(x.name || '').slice(0, 50), text: String(x.text || '').slice(0, 1500) }))
+        .filter((x) => x.name && x.text)
+        .slice(0, 40)
+    : [];
 }
 export function updateSettings(patch) {
   data.settings = { ...data.settings, ...patch };

@@ -58,6 +58,9 @@ import {
   setUserTheme,
   effectiveCategoryRoles,
   roleForCategory,
+  effectivePerms,
+  effectiveMacros,
+  PERM_KEYS,
   addSanction,
   listSanctions,
   removeSanction,
@@ -149,6 +152,14 @@ function onlineUids() {
 function pushLoginsToOwners() {
   const payload = { type: 'logins', list: listFirstSeen(), online: onlineUids() };
   for (const c of clients) if (c.ready && c.isOwner) send(c, payload);
+}
+
+// résout les permissions par action pour un client (owner = tout)
+function permsFor(entry) {
+  const P = effectivePerms();
+  const can = {};
+  for (const k of PERM_KEYS) can[k] = !!entry.isOwner || entry.level >= P[k];
+  return can;
 }
 
 // signalements : liste complète aux modos, liste perso à chaque auteur
@@ -289,6 +300,7 @@ export function registerGateway(app) {
         ? config.ownerIds.includes(session.uid)
         : level >= maxLevel;
       entry.canModerate = entry.isOwner || level >= maxLevel;
+      entry.can = permsFor(entry);
       entry.ready = true;
       send(entry, {
         type: 'hello',
@@ -298,6 +310,8 @@ export function registerGateway(app) {
         levelLabel: levelName(level),
         roleName: entry.roleName,
         canModerate: entry.canModerate,
+        perms: entry.can,
+        macros: effectiveMacros(),
         tiers: config.staffTiers.map((t) => t.name),
         maxLevel,
         blacklist: getBlacklist(),
@@ -495,9 +509,35 @@ export function registerGateway(app) {
             .filter((r) => r.category && r.roleId)
             .slice(0, 40);
         }
+        if (p.perms && typeof p.perms === 'object') {
+          const cur = effectivePerms();
+          const np = { ...cur };
+          for (const k of PERM_KEYS) {
+            const v = Number(p.perms[k]);
+            if (Number.isFinite(v) && v >= 1 && v <= 999) np[k] = Math.round(v);
+          }
+          patch.perms = np;
+        }
+        if (Array.isArray(p.macros)) {
+          patch.macros = p.macros
+            .map((x) => ({
+              name: String(x.name || '').slice(0, 50),
+              text: String(x.text || '').slice(0, 1500),
+            }))
+            .filter((x) => x.name && x.text)
+            .slice(0, 40);
+        }
         updateSettings(patch);
         if (patch.botStatus) applyBotStatus();
         send(entry, { type: 'settings_saved', ok: true });
+        if (patch.perms) {
+          for (const c of clients) {
+            if (!c.ready) continue;
+            c.can = permsFor(c);
+            send(c, { type: 'perms', perms: c.can });
+          }
+        }
+        if (patch.macros) broadcastAll({ type: 'macros', macros: effectiveMacros() });
         broadcastAll({ type: 'categories', categories: effectiveCategories() });
         broadcastAll({ type: 'theme', theme: effectiveTheme() });
         broadcastAll({
@@ -521,7 +561,7 @@ export function registerGateway(app) {
 
       /* ---- annonce dans le salon annonces ---- */
       if (msg.type === 'announce') {
-        if (!entry.canModerate) {
+        if (!entry.can.announce) {
           send(entry, { type: 'announced', ok: false, error: 'forbidden' });
           return;
         }
@@ -548,12 +588,12 @@ export function registerGateway(app) {
 
       /* ---- sanctions staff (3 = plus d'accès au site) ---- */
       if (msg.type === 'get_sanctions') {
-        if (!entry.canModerate) return;
+        if (!entry.can.sanctions) return;
         send(entry, { type: 'sanctions', list: listSanctions() });
         return;
       }
       if (msg.type === 'sanction_add') {
-        if (!entry.canModerate) {
+        if (!entry.can.sanctions) {
           send(entry, { type: 'sanctions', list: [], error: 'forbidden' });
           return;
         }
@@ -576,15 +616,15 @@ export function registerGateway(app) {
           broadcastPresence();
         }
         for (const c of clients) {
-          if (c.canModerate) send(c, { type: 'sanctions', list: listSanctions() });
+          if (c.can?.sanctions) send(c, { type: 'sanctions', list: listSanctions() });
         }
         return;
       }
       if (msg.type === 'sanction_del') {
-        if (!entry.canModerate) return;
+        if (!entry.can.sanctions) return;
         removeSanction(msg.id | 0);
         for (const c of clients) {
-          if (c.canModerate) send(c, { type: 'sanctions', list: listSanctions() });
+          if (c.can?.sanctions) send(c, { type: 'sanctions', list: listSanctions() });
         }
         return;
       }
@@ -774,30 +814,30 @@ export function registerGateway(app) {
         return;
       }
 
-      /* ---- panneaux « Reprise » (owner + grade max) ---- */
+      /* ---- panneaux « Reprise » ---- */
       if (msg.type === 'get_panels') {
-        if (!entry.canModerate) return;
+        if (!entry.can.panels) return;
         send(entry, { type: 'panels', list: listPanels() });
         return;
       }
       if (msg.type === 'save_panel') {
-        if (!entry.canModerate) return;
+        if (!entry.can.panels) return;
         const saved = upsertPanel(msg.panel || {});
-        for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+        for (const c of clients) if (c.can?.panels) send(c, { type: 'panels', list: listPanels() });
         send(entry, { type: 'panel_saved', ok: true, id: saved.id });
         return;
       }
       if (msg.type === 'delete_panel') {
-        if (!entry.canModerate) return;
+        if (!entry.can.panels) return;
         deletePanel(msg.id | 0);
-        for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+        for (const c of clients) if (c.can?.panels) send(c, { type: 'panels', list: listPanels() });
         return;
       }
       if (msg.type === 'publish_reprise') {
-        if (!entry.canModerate) return;
+        if (!entry.can.panels) return;
         try {
           const r = await publishReprisePanel(msg.id | 0);
-          for (const c of clients) if (c.canModerate) send(c, { type: 'panels', list: listPanels() });
+          for (const c of clients) if (c.can?.panels) send(c, { type: 'panels', list: listPanels() });
           send(entry, { type: 'reprise_published', ok: true, ...r });
         } catch (e) {
           send(entry, { type: 'reprise_published', ok: false, error: String(e?.message || e) });
@@ -805,9 +845,9 @@ export function registerGateway(app) {
         return;
       }
 
-      /* ---- boutique (owner + grade max) ---- */
+      /* ---- boutique ---- */
       if (msg.type === 'shop_announce') {
-        if (!entry.canModerate) {
+        if (!entry.can.shop) {
           send(entry, { type: 'shop_result', ok: false, error: 'forbidden' });
           return;
         }
@@ -826,9 +866,22 @@ export function registerGateway(app) {
         return;
       }
 
-      /* ---- recrutement staff (owner + grade max) ---- */
+      /* ---- recrutement staff ---- */
+      if (msg.type === 'recruit_save') {
+        if (!entry.can.recruit) return;
+        setRecruit({
+          channelId: String(msg.channelId ?? effectiveRecruit().channelId).trim(),
+          roleId: String(msg.roleId ?? effectiveRecruit().roleId).trim(),
+          formUrl: String(msg.formUrl ?? effectiveRecruit().formUrl).trim(),
+          bannerUrl: String(msg.bannerUrl ?? effectiveRecruit().bannerUrl).trim(),
+          textOpen: String(msg.textOpen ?? effectiveRecruit().textOpen).slice(0, 2000),
+          textClosed: String(msg.textClosed ?? effectiveRecruit().textClosed).slice(0, 2000),
+        });
+        send(entry, { type: 'recruit_state', ...effectiveRecruit() });
+        return;
+      }
       if (msg.type === 'recruit_toggle') {
-        if (!entry.canModerate) return;
+        if (!entry.can.recruit) return;
         setRecruit({ open: !!msg.open });
         try {
           const r = await publishRecruit();
@@ -839,25 +892,25 @@ export function registerGateway(app) {
         return;
       }
       if (msg.type === 'get_recruit') {
-        if (!entry.canModerate) return;
+        if (!entry.can.recruit) return;
         send(entry, { type: 'recruit_state', ...effectiveRecruit() });
         return;
       }
 
-      /* ---- webhooks entrants (owner) ---- */
+      /* ---- webhooks entrants ---- */
       if (msg.type === 'get_hooks') {
-        if (!entry.isOwner) return;
+        if (!entry.can.webhooks) return;
         send(entry, { type: 'hooks', list: listHooks() });
         return;
       }
       if (msg.type === 'add_hook') {
-        if (!entry.isOwner) return;
+        if (!entry.can.webhooks) return;
         addHook(msg.kind, msg.channelId, msg.label);
         send(entry, { type: 'hooks', list: listHooks() });
         return;
       }
       if (msg.type === 'del_hook') {
-        if (!entry.isOwner) return;
+        if (!entry.can.webhooks) return;
         deleteHook(msg.id | 0);
         send(entry, { type: 'hooks', list: listHooks() });
         return;
@@ -1242,6 +1295,7 @@ export function registerGateway(app) {
         if (level !== c.level || rolesChanged || roleNameChanged) {
           c.level = level;
           c.canModerate = c.isOwner || level >= maxLevel;
+          c.can = permsFor(c);
           updatePushSubLevel(c.session.uid, level);
           send(c, {
             type: 'hello',
@@ -1251,6 +1305,8 @@ export function registerGateway(app) {
             levelLabel: levelName(level),
             roleName: c.roleName,
             canModerate: c.canModerate,
+            perms: c.can,
+            macros: effectiveMacros(),
             tiers: config.staffTiers.map((t) => t.name),
             maxLevel,
             blacklist: getBlacklist(),

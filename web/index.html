@@ -70,19 +70,25 @@
           <p><b>👤</b> = fiche du client (1er contact, nb de messages, staff ayant répondu, blacklist…). <b>⬇</b> = télécharger toute la conversation en fichier.</p></div>
 
         <div class="ob-sec"><h3>📇 Membres du serveur</h3>
-          <p>Onglet <b>📇</b> : tous les membres Discord + leurs rôles, recherche par pseudo ou rôle, bouton <b>✉️ MP</b> pour qu'un message parte au nom du bot (convocation, avertissement…).</p></div>
+          <p>Onglet <b>📇</b> : tous les membres Discord + leurs rôles, recherche par pseudo ou rôle, bouton <b>✉️ MP</b> pour qu'un message parte au nom du bot.</p></div>
+
+        <div class="ob-sec"><h3>📌 Convocation</h3>
+          <p>Onglet <b>📌</b> : cherche un membre → motif + horaire → il reçoit un MP du bot, avec une trace dans un salon. Un historique garde toutes les convocations.</p></div>
 
         <div class="ob-sec"><h3>👥 Équipe & ton statut</h3>
-          <p>Onglet <b>👥</b> : qui est connecté, avec son rôle. En bas de l'écran, choisis ton statut : <b>🟢 Présent · 🔴 Occupé · ⚪ Absent</b>. Après <b>10 min</b> sans bouger la souris, tu passes automatiquement en <b>🟠 inactif</b>.</p></div>
+          <p>Onglet <b>👥</b> : qui est connecté, avec son rôle. En bas de l'écran, choisis ton statut : <b>🟢 Présent · 🔴 Occupé · ⚪ Absent</b>. Après <b>10 min</b> sans bouger la souris → <b>🟠 inactif</b>.</p></div>
 
-        <div class="ob-sec"><h3>🎨 Ton apparence</h3>
-          <p>Onglet <b>⚙️ → « Mon apparence »</b> : choisis ton thème (sombre, noir, ardoise, <b>clair</b>) et ta couleur — <b>visible par toi seul</b>, gardé sur ton compte.</p></div>
+        <div class="ob-sec"><h3>⚡ Macros</h3>
+          <p>Dans un ticket, le bouton <b>⚡</b> ouvre les <b>réponses pré-écrites</b> : un clic et le texte se met dans le champ (<code>{name}</code> = pseudo du client). Elles se configurent dans ⚙️ Réglages.</p></div>
 
-        <div class="ob-sec"><h3>💡 Suggestions · 🐞 Report · 📃 Notes de version</h3>
-          <p><b>💡</b> une idée d'amélioration. <b>🐞</b> un bug ou un truc cassé → signale-le. <b>📃</b> la liste de tout ce qui a changé à chaque mise à jour.</p></div>
+        <div class="ob-sec"><h3>🎨 Ton apparence · Bannières</h3>
+          <p><b>⚙️ → « Mon apparence »</b> : ton thème (sombre, noir, ardoise, <b>clair</b>) + ta couleur, visible par toi seul. L'onglet <b>🎨 Bannières</b> (selon ton grade) crée des visuels pour les embeds Discord (PNG, GIF animé).</p></div>
 
-        <div class="ob-sec"><h3>🛡️ Responsables</h3>
-          <p>Si tu es responsable/admin, l'onglet <b>🛡️ Modération</b> te sert à publier des annonces et à gérer les sanctions du staff.</p></div>
+        <div class="ob-sec"><h3>💡 Suggestions · 🐞 Signaler un bug · 📃 Notes de version</h3>
+          <p><b>💡</b> une idée d'amélioration. <b>🐞</b> un bug / un truc cassé — tu suis la conversation directement dans l'onglet, un responsable te répond dedans. <b>📃</b> tout ce qui a changé à chaque mise à jour.</p></div>
+
+        <div class="ob-sec"><h3>🛡️ Modération (selon ton grade)</h3>
+          <p>Onglet <b>🛡️</b> : publier une <b>annonce</b>, gérer les <b>sanctions</b> du staff (3 = plus d'accès au site), ouvrir/fermer le <b>recrutement</b>, publier les <b>panneaux « Reprise »</b> (groupes / entreprises), la <b>boutique</b> et les <b>webhooks</b>. Chaque action est réservée à un grade minimum, réglable par l'owner.</p></div>
 
         <div class="ob-sec ob-rules"><h3>✅ Les règles</h3>
           <ul>
@@ -191,10 +197,10 @@
             <div><div class="lbl">Suggestions</div>
                  <div class="hint">proposer une amélioration</div></div>
           </button>
-          <div class="card soon"><span class="tag">bientôt</span>
+          <button class="card" data-go="settings" id="cMacros">
             <div class="ico">⚡</div>
-            <div><div class="lbl">Macros</div><div class="hint">réponses pré-écrites en 1 clic</div></div>
-          </div>
+            <div><div class="lbl">Macros</div><div class="hint">réponses pré-écrites — bouton ⚡ dans un ticket</div></div>
+          </button>
         </div>
       </section>
 
@@ -262,10 +268,12 @@
             <label id="noteToggle" title="Visible staff uniquement — n'est pas envoyée au client">
               <input type="checkbox" id="noteCheck" /> Note interne
             </label>
+            <button id="macroBtn" class="hidden" title="Réponses pré-écrites">⚡</button>
             <button id="attachBtn" title="Envoyer un fichier au client">📎</button>
             <input type="file" id="fileInput" class="hidden" />
             <input id="input" placeholder="Écris ta réponse au client…" autocomplete="off" disabled />
             <button id="sendBtn" class="btn-accent" disabled>Envoyer</button>
+            <div id="macroMenu" class="hidden"></div>
           </div>
         </div>
       </section>
@@ -457,6 +465,23 @@
 ⚡ VoltHorizon RP"></textarea>
             </div>
             <div class="setgrp">
+              <h4>🔐 Qui peut faire quoi (grade minimum)</h4>
+              <p class="muted">Chaque action est ouverte à ce grade et à tous ceux au-dessus. « Owner » = toi seul. Tu es owner, tu as tout de toute façon.</p>
+              <label class="setline">📢 Annonces <select id="permAnnounce"></select></label>
+              <label class="setline">🧑‍💼 Recrutement (ouvrir/fermer) <select id="permRecruit"></select></label>
+              <label class="setline">🎨 Éditeur de bannières <select id="permBanners"></select></label>
+              <label class="setline">⚠ Sanctions du staff <select id="permSanctions"></select></label>
+              <label class="setline">🛒 Boutique (annonces) <select id="permShop"></select></label>
+              <label class="setline">📋 Panneaux Reprise <select id="permPanels"></select></label>
+              <label class="setline">🔗 Webhooks entrants <select id="permWebhooks"></select></label>
+            </div>
+            <div class="setgrp">
+              <h4>⚡ Macros (réponses pré-écrites)</h4>
+              <p class="muted">Une par bloc : <b>Titre</b> puis le texte. <code>{name}</code> = pseudo du client. Dans un ticket, le bouton ⚡ ouvre la liste.</p>
+              <div id="setMacros"></div>
+              <button id="setMacroAdd" class="linkbtn" type="button">+ Ajouter une macro</button>
+            </div>
+            <div class="setgrp">
               <h4>Guide de bienvenue</h4>
               <p class="muted">Le guide s'affiche à la 1re connexion de chaque staff et il est obligé de le lire. Tu peux le revoir :</p>
               <button id="obReview" class="linkbtn" type="button">Revoir le guide</button>
@@ -510,7 +535,7 @@
       <section id="viewMod" class="view">
         <div class="stats-head"><h2>🛡️ Modération</h2></div>
 
-        <div class="setgrp">
+        <div class="setgrp" id="modAnnounce">
           <h4>📢 Publier une annonce</h4>
           <p class="muted">Envoyée dans le salon annonces configuré dans les Réglages.</p>
           <textarea id="annText" rows="4" placeholder="Ton annonce…"></textarea>
@@ -520,7 +545,7 @@
           </div>
         </div>
 
-        <div class="setgrp">
+        <div class="setgrp" id="modSanctions">
           <h4>⚠ Sanctions du staff</h4>
           <p class="muted">3 sanctions actives = accès au site retiré pour la personne.</p>
           <div class="sanction-add">
@@ -532,7 +557,7 @@
           <div id="sancList"></div>
         </div>
 
-        <div class="setgrp">
+        <div class="setgrp" id="modPanels">
           <h4>📋 Panneaux « Reprise » (Groupes illégaux / Entreprises)</h4>
           <p class="muted">Crée un embed Discord avec des sections et des lignes 🟩 dispo / 🟥 indispo, puis publie-le dans un salon. Re-publier met à jour le même message.</p>
           <div id="panelList"></div>
@@ -540,7 +565,7 @@
           <div id="panelEditor" class="hidden"></div>
         </div>
 
-        <div class="setgrp">
+        <div class="setgrp" id="modShop">
           <h4>🛒 Boutique — annonce</h4>
           <p class="muted">Poste une annonce embed dans le salon boutique (⚙️).</p>
           <label class="setline">Titre <input type="text" id="shopTitle" maxlength="200" placeholder="Nouveau pack VIP disponible !" /></label>
@@ -551,7 +576,7 @@
           <div class="mm-actions"><button id="shopSend" class="btn-accent" type="button">Publier l'annonce boutique</button><span id="shopStatus" class="who"></span></div>
         </div>
 
-        <div class="setgrp">
+        <div class="setgrp" id="modRecruit">
           <h4>🧑‍💼 Recrutement staff</h4>
           <p class="muted">Un embed « OUVERTS / FERMÉS » dans un salon, avec ping du rôle et bannière. Le bouton ci-dessous publie / met à jour le message.</p>
           <label class="setline">Salon <input type="text" id="recChan" placeholder="ID du salon" /></label>
@@ -569,8 +594,8 @@
           </div>
         </div>
 
-        <div class="setgrp" id="hookGrp">
-          <h4>🔗 Webhooks entrants (owner)</h4>
+        <div class="setgrp" id="modHooks">
+          <h4>🔗 Webhooks entrants</h4>
           <p class="muted">Donne une URL à un service externe (Tebex, formulaire…). À chaque envoi, ça poste une annonce dans le salon choisi. Corps JSON attendu : <code>{ title, text, url, image }</code>.</p>
           <div class="sanction-add">
             <input type="text" id="hookLabel" placeholder="Nom (ex : Tebex boutique)" />

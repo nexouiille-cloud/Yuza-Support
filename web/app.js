@@ -25,7 +25,9 @@ let staffOnly = false; // vue "staff seulement" dans la conversation
 let presence = []; // staff en ligne
 let myRoles = []; // mes rôles Discord (IDs)
 let myRoleName = ''; // mon rôle Discord (nom, affiché)
-let canModerate = false; // owner ou grade max : annonces + sanctions
+let canModerate = false; // owner ou grade max : liste des signalements
+let perms = {}; // { announce, recruit, banners, sanctions, shop, webhooks, panels } -> booléens
+let macros = []; // [{name, text}] réponses pré-écrites
 let assignRoles = []; // rôles demandables : [{name, roleId}]
 let slaMin = 15; // seuil d'alerte SLA (minutes)
 
@@ -242,19 +244,71 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
   if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
-  if (name === 'mod' && ws && ws.readyState === 1 && canModerate) {
-    ws.send(JSON.stringify({ type: 'get_sanctions' }));
-    ws.send(JSON.stringify({ type: 'get_panels' }));
-    ws.send(JSON.stringify({ type: 'get_recruit' }));
-    ws.send(JSON.stringify({ type: 'get_hooks' }));
+  if (name === 'mod') {
+    $('#modAnnounce').classList.toggle('hidden', !perms.announce);
+    $('#modSanctions').classList.toggle('hidden', !perms.sanctions);
+    $('#modPanels').classList.toggle('hidden', !perms.panels);
+    $('#modShop').classList.toggle('hidden', !perms.shop);
+    $('#modRecruit').classList.toggle('hidden', !perms.recruit);
+    $('#modHooks').classList.toggle('hidden', !perms.webhooks);
+    if (ws && ws.readyState === 1) {
+      if (perms.sanctions) ws.send(JSON.stringify({ type: 'get_sanctions' }));
+      if (perms.panels) ws.send(JSON.stringify({ type: 'get_panels' }));
+      if (perms.recruit) ws.send(JSON.stringify({ type: 'get_recruit' }));
+      if (perms.webhooks) ws.send(JSON.stringify({ type: 'get_hooks' }));
+    }
   }
   if (name === 'report' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_reports' }));
   if (name === 'convoke' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
-  if (name === 'banners' && typeof initBannerEditor === 'function') initBannerEditor();
+  if (name === 'banners' && perms.banners && typeof initBannerEditor === 'function') initBannerEditor();
   if (name === 'patch') loadPatchNotes();
 }
+
+/* ---------------- permissions : affichage des onglets ---------------- */
+function applyPermsUI() {
+  const anyMod = ['announce', 'recruit', 'sanctions', 'shop', 'webhooks', 'panels'].some((k) => perms[k]);
+  $('#modNav').classList.toggle('hidden', !anyMod);
+  $('#bannersNav').classList.toggle('hidden', !perms.banners);
+  const cm = $('#cMacros');
+  if (cm) cm.classList.toggle('hidden', settingsScope !== 'owner');
+  $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
+}
+
+/* ---------------- macros (réponses pré-écrites) ---------------- */
+function fillMacro(text) {
+  const t = current ? tickets.get(current) : null;
+  const filled = String(text).replace(/\{name\}/g, t ? t.username : '');
+  const inp = $('#input');
+  inp.value = inp.value ? inp.value.replace(/\s*$/, ' ') + filled : filled;
+  inp.focus();
+  $('#macroMenu').classList.add('hidden');
+}
+function renderMacroMenu() {
+  const box = $('#macroMenu');
+  if (!box) return;
+  box.innerHTML = macros.length
+    ? macros
+        .map(
+          (m, i) =>
+            `<button class="macro-i" type="button" data-i="${i}"><b>${esc(m.name)}</b><span>${esc(m.text.slice(0, 90))}</span></button>`,
+        )
+        .join('')
+    : '<div class="muted" style="padding:8px">Aucune macro. (Réglages → Macros)</div>';
+  box.querySelectorAll('.macro-i').forEach((b) =>
+    b.addEventListener('click', () => fillMacro(macros[+b.dataset.i].text)),
+  );
+  $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
+}
+$('#macroBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('#macroMenu').classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#macroMenu') && e.target.id !== 'macroBtn')
+    $('#macroMenu').classList.add('hidden');
+});
 
 /* ---------------- guide de bienvenue (obligé de lire) ---------------- */
 let obSeen = false;
@@ -787,10 +841,10 @@ function handle(m) {
       presence = m.staff || presence;
       if (Array.isArray(m.roles)) myRoles = m.roles.map(String);
       if (m.roleName !== undefined) myRoleName = m.roleName || '';
-      if (m.canModerate !== undefined) {
-        canModerate = !!m.canModerate;
-        $('#modNav').classList.toggle('hidden', !canModerate);
-      }
+      if (m.canModerate !== undefined) canModerate = !!m.canModerate;
+      if (m.perms) perms = m.perms;
+      if (Array.isArray(m.macros)) { macros = m.macros; renderMacroMenu(); }
+      applyPermsUI();
       if (Array.isArray(m.assignRoles)) assignRoles = m.assignRoles;
       if (m.slaMinutes) slaMin = m.slaMinutes;
       if (m.appearance !== undefined) {
@@ -916,8 +970,19 @@ function handle(m) {
     case 'settings_meta':
       settingsScope = m.settingsScope || 'colors';
       $('#settingsNav').classList.remove('hidden'); // tout le staff : au moins les couleurs
-      $('#bannersNav').classList.toggle('hidden', settingsScope !== 'owner'); // éditeur de bannières : owner
+      applyPermsUI();
       if (m.theme) applyTheme(m.theme);
+      break;
+
+    case 'perms':
+      perms = m.perms || {};
+      applyPermsUI();
+      if ($('#viewMod').classList.contains('active')) showView('mod');
+      break;
+
+    case 'macros':
+      macros = Array.isArray(m.macros) ? m.macros : [];
+      renderMacroMenu();
       break;
 
     case 'settings':
@@ -1425,6 +1490,7 @@ function syncHeader() {
   $('#closeBtn').classList.toggle('hidden', !t || t.status === 'closed');
   $('#reopenBtn').classList.toggle('hidden', !t || t.status !== 'closed');
   $('#deleteBtn').classList.toggle('hidden', !(t && settingsScope === 'owner'));
+  $('#macroBtn').classList.toggle('hidden', !(t && macros.length));
 
   const block = $('#blockBtn');
   const bl = !!(t && blacklist.has(String(t.user_id)));
@@ -1608,6 +1674,59 @@ function fillSettings(s, scope) {
   $('#setBotText').value = (s.botStatus && s.botStatus.text) || '';
   $('#setBotType').value = (s.botStatus && s.botStatus.type) || 'custom';
   renderCatRoles(s.categoryRoles || []);
+  fillPermSelects(s.perms || {});
+  renderSetMacros(s.macros || []);
+}
+
+/* permissions par grade : options = niveaux (2..maxLvl) + owner-only (999) */
+const PERM_FIELDS = {
+  permAnnounce: 'announce', permRecruit: 'recruit', permBanners: 'banners',
+  permSanctions: 'sanctions', permShop: 'shop', permPanels: 'panels', permWebhooks: 'webhooks',
+};
+function permOptions(cur) {
+  let html = '';
+  for (let L = 2; L <= Math.max(2, maxLvl); L++) {
+    html += `<option value="${L}"${cur === L ? ' selected' : ''}>${esc(levelName(L))}${L === maxLvl ? '' : ' et +'}</option>`;
+  }
+  html += `<option value="999"${cur >= 999 ? ' selected' : ''}>Owner uniquement</option>`;
+  return html;
+}
+function fillPermSelects(pm) {
+  for (const [id, key] of Object.entries(PERM_FIELDS)) {
+    const el = $('#' + id);
+    if (el) el.innerHTML = permOptions(Number(pm[key]) || 999);
+  }
+}
+function gatherPerms() {
+  const out = {};
+  for (const [id, key] of Object.entries(PERM_FIELDS)) {
+    const el = $('#' + id);
+    if (el) out[key] = Number(el.value) || 999;
+  }
+  return out;
+}
+
+/* macros */
+function macroRow(name, text) {
+  const d = document.createElement('div');
+  d.className = 'setmacro';
+  d.innerHTML =
+    `<input class="mn" placeholder="Titre (ex : Bienvenue)" value="${esc(name || '')}" />` +
+    `<textarea class="mt" rows="2" placeholder="Texte… {name} = pseudo du client">${esc(text || '')}</textarea>` +
+    `<button class="rm linkbtn" type="button">✕</button>`;
+  d.querySelector('.rm').addEventListener('click', () => d.remove());
+  return d;
+}
+function renderSetMacros(rows) {
+  const box = $('#setMacros');
+  if (!box) return;
+  box.innerHTML = '';
+  (rows.length ? rows : []).forEach((r) => box.appendChild(macroRow(r.name, r.text)));
+}
+function gatherMacros() {
+  return [...document.querySelectorAll('#setMacros .setmacro')]
+    .map((d) => ({ name: d.querySelector('.mn').value.trim(), text: d.querySelector('.mt').value.trim() }))
+    .filter((m) => m.name && m.text);
 }
 
 /* responsables par catégorie : une ligne (catégorie -> ID rôle) */
@@ -1710,6 +1829,8 @@ $('#setSave').addEventListener('click', () => {
         shopChannelId: $('#setShopChan').value.trim(),
         botStatus: { text: $('#setBotText').value, type: $('#setBotType').value },
         categoryRoles: gatherCatRoles(),
+        perms: gatherPerms(),
+        macros: gatherMacros(),
         theme: {
           appName: $('#setAppName').value.trim() || 'Volt Support',
           accent: $('#setAccent').value,
@@ -1724,6 +1845,7 @@ $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
 });
 $('#obReview').addEventListener('click', () => showOnboarding(true));
+$('#setMacroAdd').addEventListener('click', () => $('#setMacros').appendChild(macroRow('', '')));
 $('#panelPublish').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;
   // on enregistre d'abord le contenu du panneau, puis on publie
@@ -2040,29 +2162,27 @@ function fillRecruit(r) {
   if (r.error) setStatus(`Recrutement : ${r.error}`);
   else if (r.published) setStatus(r.open ? '✓ recrutements ouverts (posté)' : '✓ recrutements fermés (posté)');
 }
-$('#recSave').addEventListener('click', () => {
+function sendRecruitSave() {
   if (!ws || ws.readyState !== 1) return;
   ws.send(
     JSON.stringify({
-      type: 'save_settings',
-      patch: {
-        recruit: {
-          channelId: $('#recChan').value.trim(),
-          roleId: $('#recRole').value.trim(),
-          formUrl: $('#recForm').value.trim(),
-          bannerUrl: $('#recBanner').value.trim(),
-          textOpen: $('#recTextOpen').value,
-          textClosed: $('#recTextClosed').value,
-        },
-      },
+      type: 'recruit_save',
+      channelId: $('#recChan').value.trim(),
+      roleId: $('#recRole').value.trim(),
+      formUrl: $('#recForm').value.trim(),
+      bannerUrl: $('#recBanner').value.trim(),
+      textOpen: $('#recTextOpen').value,
+      textClosed: $('#recTextClosed').value,
     }),
   );
-  setStatus('Textes recrutement enregistrés.');
+}
+$('#recSave').addEventListener('click', () => {
+  sendRecruitSave();
+  setStatus('Réglages recrutement enregistrés.');
 });
 $('#recToggle').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;
-  // enregistre d'abord les champs, puis toggle
-  $('#recSave').click();
+  sendRecruitSave(); // enregistre les champs d'abord
   ws.send(JSON.stringify({ type: 'recruit_toggle', open: $('#recToggle').dataset.next === '1' }));
 });
 

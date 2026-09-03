@@ -4,6 +4,9 @@
     "title": "Présence, modération & signature",
     "items": [
       "Correction : sur téléphone, impossible de faire défiler certains écrans / de remonter en haut. La navigation est passée en barre du bas normale et le scroll interne des vues fonctionne partout.",
+      "Permissions par grade (⚙️ Réglages, owner) : chaque action (annonces, recrutement, bannières, sanctions, boutique, panneaux, webhooks) est ouverte à un grade minimum. Les onglets et sections se masquent selon ton grade.",
+      "Macros : réponses pré-écrites (⚙️ Réglages). Dans un ticket, le bouton ⚡ ouvre la liste, un clic met le texte dans le champ ({name} = pseudo du client).",
+      "Guide de bienvenue mis à jour avec tous les nouveaux onglets.",
       "Suppression définitive d'un ticket : bouton 🗑 à côté de « Clôturer », réservé à l'owner. Ticket + messages + historique effacés, irrécupérable.",
       "Signalements de bug : conversation directement dans l'onglet 🐞 (plus de MP). Celui qui a signalé voit le fil et peut répondre ; les responsables voient tout.",
       "Éditeur de bannières (onglet 🎨, owner) : dégradé applicable sur chaque texte, aperçu animé (braises, halo, balayage), export PNG / GIF animé / WEBM. 11 modèles de fond, 12 dégradés, logo VH modifiable. Une bannière GIF s'anime dans l'embed Discord.",
