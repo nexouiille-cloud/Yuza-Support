@@ -143,6 +143,7 @@
       <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Signaler un bug</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
+      <button class="navbtn hidden" id="bannersNav" data-view="banners"><span>🎨</span><span class="tip">Bannières</span></button>
       <button class="navbtn hidden" id="modNav" data-view="mod"><span>🛡️</span><span class="tip">Modération</span></button>
       <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Réglages</span></button>
       <span class="spacer"></span>
@@ -285,6 +286,13 @@
         <textarea id="sugText" rows="3" placeholder="Ta suggestion…"></textarea>
         <div class="mm-actions"><button id="sugSend" class="btn-accent" type="button">Envoyer</button><span id="sugStatus" class="who"></span></div>
         <div id="sugList" class="hidden"></div>
+      </section>
+
+      <!-- ---- Éditeur de bannières (owner) ---- -->
+      <section id="viewBanners" class="view">
+        <div class="stats-head"><h2>🎨 Éditeur de bannières</h2></div>
+        <p class="muted">Réservé à toi. Crée / modifie une bannière → <b>Télécharger PNG</b> → upload sur Discord → colle l'URL dans le champ « Bannière » d'un panneau. Tout est sauvegardé dans ton navigateur.</p>
+        <div id="beRoot"></div>
       </section>
 
       <!-- ---- Convocation ---- -->
@@ -604,6 +612,7 @@
     </div>
   </div>
 
+  <script src="/banner-editor.js" defer></script>
   <script src="/app.js"></script>
 </body>
 </html>

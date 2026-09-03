@@ -4,6 +4,7 @@
     "title": "Présence, modération & signature",
     "items": [
       "Correction : sur téléphone, impossible de faire défiler certains écrans / de remonter en haut. La navigation est passée en barre du bas normale et le scroll interne des vues fonctionne partout.",
+      "Éditeur de bannières intégré (onglet 🎨, owner) : titre / logo VH modifiable / 11 modèles de fond / 12 dégradés / effets → télécharge le PNG et colle l'URL dans un panneau.",
       "Signalements de bug : les responsables peuvent répondre à un report — la réponse part en MP à la personne qui l'a signalé, et le fil de discussion s'affiche.",
       "Onglet 📌 Convocation : convoque un membre (MP du bot + motif + horaire + trace salon), avec historique.",
       "Modération : panneaux « Reprise » (Groupes illégaux / Entreprises) — embed éditable avec sections et lignes 🟩 dispo / 🟥 indispo, publiable et modifiable dans un salon.",

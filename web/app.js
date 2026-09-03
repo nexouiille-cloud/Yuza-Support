@@ -252,6 +252,7 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'get_reports' }));
   if (name === 'convoke' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
+  if (name === 'banners' && typeof initBannerEditor === 'function') initBannerEditor();
   if (name === 'patch') loadPatchNotes();
 }
 
@@ -912,6 +913,7 @@ function handle(m) {
     case 'settings_meta':
       settingsScope = m.settingsScope || 'colors';
       $('#settingsNav').classList.remove('hidden'); // tout le staff : au moins les couleurs
+      $('#bannersNav').classList.toggle('hidden', settingsScope !== 'owner'); // éditeur de bannières : owner
       if (m.theme) applyTheme(m.theme);
       break;
 
