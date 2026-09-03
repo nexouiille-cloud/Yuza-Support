@@ -47,7 +47,8 @@
     return seed.slice(0, n).map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}" opacity="0.9"/><circle cx="${x}" cy="${y}" r="${r * 3}" fill="${color}" opacity="0.18"/>`).join('');
   }
 
-  function svgFor(b) {
+  function svgFor(b, opt) {
+    opt = opt || {};
     DEFS_EXTRA = '';
     const gcols = GRAD[b.grad] || GRAD.braise;
     const grad = `<linearGradient id="acc" x1="0" y1="0" x2="1" y2="0">${gcols.map((c, i) => `<stop offset="${i / (gcols.length - 1)}" stop-color="${c}"/>`).join('')}</linearGradient>`;
@@ -70,6 +71,13 @@
     const ts = +b.titleSize || 76;
     const align = b.logo ? 'start' : (b.align || 'start');
     const ax = align === 'middle' ? W / 2 : align === 'end' ? W - 90 : tx0;
+    const fTag = b.gTag ? 'url(#acc)' : b.accent;
+    const fT1 = b.gT1 ? 'url(#acc)' : '#f6f4f1';
+    const fT2 = b.gT2 === false ? '#f6f4f1' : 'url(#acc)';
+    const fSub = b.gSub ? 'url(#acc)' : '#b9b2a8';
+    // en mode animé, le SVG de base est statique (les braises/sweep bougent au canvas)
+    const staticEmbers = opt.baseForAnim ? Math.min(8, +b.embers || 0) : +b.embers || 0;
+    const showStreak = b.streak && !opt.baseForAnim;
 
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
@@ -87,16 +95,16 @@
   </defs>
   <g clip-path="url(#round)">
     ${bgLayer}
-    ${b.streak ? `<g transform="rotate(-18 600 200)"><rect x="-200" y="60" width="1700" height="70" fill="url(#streak)"/><rect x="-200" y="250" width="1700" height="30" fill="url(#streak)"/></g>` : ''}
-    ${b.embers > 0 ? emberDots(b.glow, +b.embers) : ''}
+    ${showStreak ? `<g transform="rotate(-18 600 200)"><rect x="-200" y="60" width="1700" height="70" fill="url(#streak)"/><rect x="-200" y="250" width="1700" height="30" fill="url(#streak)"/></g>` : ''}
+    ${staticEmbers > 0 ? emberDots(b.glow, staticEmbers) : ''}
     ${b.vignette ? `<rect width="${W}" height="${H}" fill="url(#vig)"/>` : ''}
     ${logo}
     <g font-family="Impact,'Arial Black',system-ui,sans-serif" text-anchor="${align}">
-      <text x="${ax}" y="150" font-size="30" letter-spacing="8" fill="${b.accent}">${esc(b.tag)}</text>
-      <text x="${ax}" y="${150 + ts}" font-size="${ts}" letter-spacing="3" fill="#f6f4f1">${esc(b.t1)}</text>
-      <text x="${ax}" y="${150 + ts * 2 - 4}" font-size="${ts}" letter-spacing="3" fill="url(#acc)">${esc(b.t2)}</text>
+      <text x="${ax}" y="150" font-size="30" letter-spacing="8" fill="${fTag}">${esc(b.tag)}</text>
+      <text x="${ax}" y="${150 + ts}" font-size="${ts}" letter-spacing="3" fill="${fT1}">${esc(b.t1)}</text>
+      <text x="${ax}" y="${150 + ts * 2 - 4}" font-size="${ts}" letter-spacing="3" fill="${fT2}">${esc(b.t2)}</text>
       <rect x="${align === 'middle' ? ax - 180 : align === 'end' ? ax - 360 : ax + 4}" y="${150 + ts * 2 + 18}" width="360" height="5" rx="2" fill="url(#acc)"/>
-      <text x="${ax}" y="${150 + ts * 2 + 56}" font-size="24" letter-spacing="2" font-family="Arial,system-ui,sans-serif" fill="#b9b2a8">${esc(b.sub)}</text>
+      <text x="${ax}" y="${150 + ts * 2 + 56}" font-size="24" letter-spacing="2" font-family="Arial,system-ui,sans-serif" fill="${fSub}">${esc(b.sub)}</text>
     </g>
     ${b.border ? `<rect x="10" y="10" width="${W - 20}" height="${H - 20}" rx="20" fill="none" stroke="${b.borderColor}" stroke-width="2" opacity="0.7"/>` : ''}
   </g>
@@ -106,11 +114,13 @@
   const DEF = (o) => Object.assign({
     tag: 'HORIZON RP', t1: 'TITRE', t2: 'LIGNE 2', sub: 'Sous-titre de la bannière',
     accent: '#ff9d00', glow: '#ff8a00', grad: 'braise',
+    gTag: false, gT1: false, gT2: true, gSub: false,
     bgStyle: 'braise', bg1: '#0b0a0c', bg2: '#141017',
     logo: true, side: 'left', shape: 'rounded', bolt: true, logoText: 'VH',
     logoBg: '#141317', logoFg: '#f3f1ee', logoImg: '',
     embers: 16, streak: true, border: true, borderColor: '#ffbb3d', vignette: false,
     titleSize: 76, align: 'start',
+    anim: true, animEmbers: true, animGlow: true, animSweep: true, animSpeed: 5,
   }, o);
 
   const PRESETS = [
@@ -145,19 +155,74 @@
       `<div class="be-tabs"></div><div class="be-wrap">` +
       `<div class="be-form"></div>` +
       `<div class="be-right"><canvas class="be-cv" width="1200" height="400"></canvas>` +
-      `<div class="be-actions"><button class="btn-accent be-dl" type="button">💾 Télécharger ce PNG</button>` +
-      `<button class="linkbtn be-dlall" type="button">Tout télécharger</button>` +
+      `<div class="be-actions"><button class="btn-accent be-dl" type="button">💾 PNG</button>` +
+      `<button class="linkbtn be-webm" type="button">🎞️ WEBM animé (3 s)</button>` +
+      `<button class="linkbtn be-dlall" type="button">Tout en PNG</button>` +
       `<button class="linkbtn be-reset" type="button">Réinitialiser cet onglet</button></div>` +
       `<p class="muted">1200×400. Télécharge, puis upload sur Discord et colle l'URL dans le champ « Bannière » du panneau.</p></div></div>`;
 
     const $ = (s) => root.querySelector(s);
     const cv = $('.be-cv'), ctx = cv.getContext('2d');
+    let baseImg = null, raf = null, t0 = 0;
 
+    // braises mobiles + sweep + halo, dessinés au canvas par-dessus l'image de base
+    function overlay(t) {
+      const b = state[cur];
+      if (!b.anim) return;
+      const spd = (+b.animSpeed || 5) / 5;
+      if (b.animGlow) {
+        const g = ctx.createRadialGradient(W / 2, H * 1.15, 0, W / 2, H * 1.15, H * 1.1);
+        const a = 0.10 + 0.09 * (0.5 + 0.5 * Math.sin(t / 900 * spd));
+        g.addColorStop(0, hexA(b.glow, a)); g.addColorStop(1, hexA(b.glow, 0));
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      }
+      if (b.animEmbers) {
+        const N = Math.max(6, +b.embers || 12);
+        ctx.save();
+        for (let i = 0; i < N; i++) {
+          const seed = i * 137.5, sp = 18 + (i % 5) * 9;
+          const x = (seed * 7.3) % W;
+          const y = H + 30 - (((t / 1000) * sp * spd + seed) % (H + 120));
+          const r = 1.5 + (i % 3);
+          const a = Math.max(0, Math.min(1, (y / H) * 0.9)) * (0.5 + 0.5 * Math.sin(t / 300 + i));
+          ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+          ctx.fillStyle = hexA(b.glow, 0.9 * a); ctx.shadowColor = b.glow; ctx.shadowBlur = r * 6;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      if (b.animSweep) {
+        const x = -500 + (((t / 14) * spd) % (W + 1000));
+        ctx.save();
+        ctx.translate(x, 0); ctx.rotate(-0.31);
+        const g = ctx.createLinearGradient(0, 0, 260, 0);
+        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.13)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, -200, 260, H + 400);
+        ctx.restore();
+      }
+    }
+    function loop(ts) {
+      if (!t0) t0 = ts;
+      const t = ts - t0;
+      if (baseImg) { ctx.clearRect(0, 0, W, H); ctx.drawImage(baseImg, 0, 0, W, H); overlay(t); }
+      raf = requestAnimationFrame(loop);
+    }
+    function stopLoop() { if (raf) cancelAnimationFrame(raf); raf = null; t0 = 0; }
     function draw() {
+      stopLoop();
+      const b = state[cur];
       const img = new Image();
-      img.onload = () => { ctx.clearRect(0, 0, W, H); ctx.drawImage(img, 0, 0, W, H); };
+      img.onload = () => {
+        baseImg = img;
+        ctx.clearRect(0, 0, W, H); ctx.drawImage(img, 0, 0, W, H);
+        if (b.anim) raf = requestAnimationFrame(loop);
+      };
       img.onerror = () => { ctx.fillStyle = '#300'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.fillText('rendu impossible', 20, 30); };
-      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgFor(state[cur]))));
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgFor(b, { baseForAnim: b.anim }))));
+    }
+    function hexA(h, a) {
+      const n = parseInt(h.slice(1), 16);
+      return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
     }
     function set(k, v) { state[cur][k] = v; persist(); draw(); }
     function renderTabs() {
@@ -209,7 +274,18 @@
         ) +
         grp('Couleurs',
           col("Couleur d'accent (petit texte + contour)", 'accent') +
-          `<label>Dégradé du titre & de la barre</label><div class="be-grads">${gradBtns}</div>`
+          `<label>Modèle de dégradé</label><div class="be-grads">${gradBtns}</div>` +
+          `<label>Appliquer le dégradé sur :</label>` +
+          chk('Petit texte du haut', 'gTag') + chk('Titre — ligne 1', 'gT1') +
+          chk('Titre — ligne 2', 'gT2') + chk('Sous-titre', 'gSub')
+        ) +
+        grp('Animation',
+          chk('Aperçu animé (braises, halo, balayage)', 'anim') +
+          chk('Braises qui montent', 'animEmbers') +
+          chk('Halo qui pulse', 'animGlow') +
+          chk('Trait de lumière qui balaie', 'animSweep') +
+          rng('Vitesse', 'animSpeed', 1, 10) +
+          `<p class="muted">L'export <b>PNG</b> est figé. L'export <b>WEBM</b> capture 3 s d'animation (à poster dans un salon Discord).</p>`
         ) +
         grp('Effets',
           rng('Densité des braises', 'embers', 0, 30) +
@@ -269,6 +345,31 @@
     $('.be-dl').onclick = () => download(cur);
     $('.be-dlall').onclick = () => { let i = 0; const step = () => { if (i >= state.length) return; download(i++, () => setTimeout(step, 500)); }; step(); };
     $('.be-reset').onclick = () => { state[cur] = DEF({ ...PRESETS[cur] }); persist(); renderForm(); draw(); };
+    $('.be-webm').onclick = function () {
+      const btn = this;
+      if (!cv.captureStream || typeof MediaRecorder === 'undefined') { alert('Ton navigateur ne permet pas l\'export vidéo.'); return; }
+      const wasAnim = state[cur].anim;
+      state[cur].anim = true; draw();
+      const stream = cv.captureStream(30);
+      let rec;
+      try { rec = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' }); }
+      catch (e) { try { rec = new MediaRecorder(stream, { mimeType: 'video/webm' }); } catch (e2) { alert('Export vidéo indisponible.'); return; } }
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      rec.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'banniere-' + state[cur].key + '.webm';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        btn.textContent = '🎞️ WEBM animé (3 s)'; btn.disabled = false;
+        state[cur].anim = wasAnim; draw();
+      };
+      btn.textContent = 'enregistrement…'; btn.disabled = true;
+      rec.start();
+      setTimeout(() => rec.stop(), 3200);
+    };
 
     renderTabs(); renderForm(); draw();
   };

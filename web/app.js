@@ -248,7 +248,7 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'get_recruit' }));
     ws.send(JSON.stringify({ type: 'get_hooks' }));
   }
-  if (name === 'report' && ws && ws.readyState === 1 && canModerate)
+  if (name === 'report' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_reports' }));
   if (name === 'convoke' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
@@ -369,10 +369,10 @@ $('#repSend').addEventListener('click', () => {
 });
 function renderReports(list) {
   const box = $('#repList');
-  box.classList.toggle('hidden', !canModerate);
-  if (!canModerate) return;
+  // visible dès qu'il y a un signalement à afficher (le staff voit les siens, le modo voit tout)
+  box.classList.toggle('hidden', !list.length && !canModerate);
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Aucun signalement.</div>';
+    box.innerHTML = canModerate ? '<div class="muted">Aucun signalement.</div>' : '';
     return;
   }
   box.innerHTML = '';
@@ -382,32 +382,35 @@ function renderReports(list) {
     const replies = (r.replies || [])
       .map(
         (rp) =>
-          `<div class="rep-reply"><strong>${esc(rp.byName)}</strong> · ${new Date(rp.at).toLocaleString('fr-FR')}<br>${esc(rp.text)}</div>`,
+          `<div class="rep-reply${rp.by === myId ? ' mine' : ''}"><strong>${esc(rp.byName)}</strong> · ${new Date(rp.at).toLocaleString('fr-FR')}<br>${esc(rp.text)}</div>`,
       )
       .join('');
     el.innerHTML =
       `<div class="si-main"><span class="rep-tag ${r.kind}">${r.kind === 'bug' ? '🐞 bug' : '⚠ autre'}</span> ${esc(r.text)}` +
-      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}</div>` +
+      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}${r.done ? ' · <span class="rep-ok">résolu</span>' : ''}</div>` +
       (replies ? `<div class="rep-thread">${replies}</div>` : '') +
-      `<div class="rep-replybar"><input class="rep-in" type="text" placeholder="Répondre à ${esc(r.by)}…" />` +
+      `<div class="rep-replybar"><input class="rep-in" type="text" placeholder="Écris une réponse…" />` +
       `<button class="rep-send btn-accent" type="button">Envoyer</button></div>` +
       `</div>` +
-      `<div class="si-btns"><button class="linkbtn si-done" type="button">${r.done ? '↩' : '✓'}</button>` +
-      `<button class="linkbtn si-del" type="button">🗑</button></div>`;
-    el.querySelector('.si-done').addEventListener('click', () =>
-      ws.send(JSON.stringify({ type: 'report_done', id: r.id, done: !r.done })),
-    );
-    el.querySelector('.si-del').addEventListener('click', () => {
-      if (window.confirm('Supprimer ce signalement ?'))
-        ws.send(JSON.stringify({ type: 'report_del', id: r.id }));
-    });
+      (canModerate
+        ? `<div class="si-btns"><button class="linkbtn si-done" type="button">${r.done ? '↩' : '✓'}</button>` +
+          `<button class="linkbtn si-del" type="button">🗑</button></div>`
+        : '');
+    if (canModerate) {
+      el.querySelector('.si-done').addEventListener('click', () =>
+        ws.send(JSON.stringify({ type: 'report_done', id: r.id, done: !r.done })),
+      );
+      el.querySelector('.si-del').addEventListener('click', () => {
+        if (window.confirm('Supprimer ce signalement ?'))
+          ws.send(JSON.stringify({ type: 'report_del', id: r.id }));
+      });
+    }
     const sendReply = () => {
       const inp = el.querySelector('.rep-in');
       const t = inp.value.trim();
       if (!t || !ws || ws.readyState !== 1) return;
       ws.send(JSON.stringify({ type: 'report_reply', id: r.id, text: t }));
       inp.value = '';
-      setStatus('Réponse envoyée en MP à ' + r.by + '.');
     };
     el.querySelector('.rep-send').addEventListener('click', sendReply);
     el.querySelector('.rep-in').addEventListener('keydown', (e) => {
@@ -1071,6 +1074,17 @@ function handle(m) {
       if (m.userId === current) closeTicketView();
       break;
 
+    case 'ticket_gone':
+      tickets.delete(m.userId);
+      msgCache.delete(m.userId);
+      if (m.userId === current) {
+        setStatus('Ce ticket a été supprimé.');
+        closeTicketView();
+      }
+      renderSidebar();
+      renderHome();
+      break;
+
     case 'ticket_bump': {
       // nouveau ticket (ancien archivé) : on repart d'une conversation vide
       if (m.isNew) {
@@ -1410,6 +1424,7 @@ function syncHeader() {
 
   $('#closeBtn').classList.toggle('hidden', !t || t.status === 'closed');
   $('#reopenBtn').classList.toggle('hidden', !t || t.status !== 'closed');
+  $('#deleteBtn').classList.toggle('hidden', !(t && settingsScope === 'owner'));
 
   const block = $('#blockBtn');
   const bl = !!(t && blacklist.has(String(t.user_id)));
@@ -2313,6 +2328,18 @@ $('#closeBtn').addEventListener('click', () => {
 });
 $('#reopenBtn').addEventListener('click', () => {
   if (current) ws.send(JSON.stringify({ type: 'reopen', userId: current }));
+});
+$('#deleteBtn').addEventListener('click', () => {
+  if (!current || settingsScope !== 'owner') return;
+  const t = tickets.get(current);
+  if (
+    window.confirm(
+      `Supprimer DÉFINITIVEMENT le ticket de « ${t ? ticketLabel(t) : current} » ?\n\n` +
+        `Le ticket, tous ses messages et son historique seront effacés. Impossible à récupérer.`,
+    )
+  ) {
+    ws.send(JSON.stringify({ type: 'delete_ticket', userId: current }));
+  }
 });
 
 // se reconnecter quand l'onglet redevient actif si la socket est tombée

@@ -4,8 +4,9 @@
     "title": "Présence, modération & signature",
     "items": [
       "Correction : sur téléphone, impossible de faire défiler certains écrans / de remonter en haut. La navigation est passée en barre du bas normale et le scroll interne des vues fonctionne partout.",
-      "Éditeur de bannières intégré (onglet 🎨, owner) : titre / logo VH modifiable / 11 modèles de fond / 12 dégradés / effets → télécharge le PNG et colle l'URL dans un panneau.",
-      "Signalements de bug : les responsables peuvent répondre à un report — la réponse part en MP à la personne qui l'a signalé, et le fil de discussion s'affiche.",
+      "Suppression définitive d'un ticket : bouton 🗑 à côté de « Clôturer », réservé à l'owner. Ticket + messages + historique effacés, irrécupérable.",
+      "Signalements de bug : conversation directement dans l'onglet 🐞 (plus de MP). Celui qui a signalé voit le fil et peut répondre ; les responsables voient tout.",
+      "Éditeur de bannières (onglet 🎨, owner) : dégradé applicable sur chaque texte, aperçu animé (braises, halo, balayage) + export WEBM 3 s. 11 modèles de fond, 12 dégradés, logo VH modifiable.",
       "Onglet 📌 Convocation : convoque un membre (MP du bot + motif + horaire + trace salon), avec historique.",
       "Modération : panneaux « Reprise » (Groupes illégaux / Entreprises) — embed éditable avec sections et lignes 🟩 dispo / 🟥 indispo, publiable et modifiable dans un salon.",
       "Modération : annonce Boutique (embed + bannière + bouton lien) et bascule Recrutement staff OUVERTS / FERMÉS (embed + ping rôle + bannière + formulaire).",

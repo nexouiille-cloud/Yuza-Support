@@ -92,6 +92,15 @@ export function upsertTicket(userId, username, preview) {
   return { created, reopened };
 }
 
+// Suppression DÉFINITIVE d'un ticket (owner) : ticket + messages + archives, irrécupérable.
+export function deleteTicketHard(userId) {
+  const id = String(userId);
+  delete data.tickets[id];
+  delete data.messages[id];
+  data.archive = data.archive.filter((a) => a.user_id !== id);
+  save();
+}
+
 // Archive un ticket clôturé : on le sort de la liste active (avec ses messages)
 // pour que le prochain MP du client crée un ticket NEUF. L'historique est gardé.
 export function archiveTicket(userId) {
@@ -561,6 +570,13 @@ export function addReportReply(id, by, byName, text) {
 }
 export function listReports() {
   return [...data.reports].sort((a, b) => a.done - b.done || b.at - a.at);
+}
+export function listReportsForUser(uid) {
+  const id = String(uid);
+  return listReports().filter((r) => r.byId === id);
+}
+export function getReport(id) {
+  return data.reports.find((x) => x.id === (id | 0)) || null;
 }
 export function setReportDone(id, done) {
   const r = data.reports.find((x) => x.id === (id | 0));

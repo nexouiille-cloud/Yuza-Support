@@ -68,8 +68,11 @@ import {
   addReport,
   addReportReply,
   listReports,
+  listReportsForUser,
+  getReport,
   setReportDone,
   deleteReport,
+  deleteTicketHard,
   isOnboarded,
   setOnboarded,
   resetOnboarded,
@@ -146,6 +149,19 @@ function onlineUids() {
 function pushLoginsToOwners() {
   const payload = { type: 'logins', list: listFirstSeen(), online: onlineUids() };
   for (const c of clients) if (c.ready && c.isOwner) send(c, payload);
+}
+
+// signalements : liste complète aux modos, liste perso à chaque auteur
+function pushReports() {
+  for (const c of clients) {
+    if (!c.ready) continue;
+    if (c.canModerate) {
+      send(c, { type: 'reports', list: listReports() });
+    } else {
+      const mine = listReportsForUser(c.session.uid);
+      if (mine.length) send(c, { type: 'reports', list: mine });
+    }
+  }
 }
 
 // événement lié à un ticket : seulement aux staff dont le niveau suffit
@@ -662,46 +678,39 @@ export function registerGateway(app) {
         return;
       }
 
-      /* ---- signalements (bugs / problèmes) ---- */
+      /* ---- signalements (bugs / problèmes) : conversation dans l'onglet, pas de MP ---- */
       if (msg.type === 'report') {
         const text = String(msg.text || '').trim();
         if (!text) return;
         addReport(session.uid, session.name, text, msg.kind);
         postReport({ byName: session.name, kind: msg.kind, text });
-        for (const c of clients) {
-          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
-        }
+        pushReports();
         send(entry, { type: 'report_ok' });
         return;
       }
       if (msg.type === 'get_reports') {
-        if (!entry.canModerate) return;
-        send(entry, { type: 'reports', list: listReports() });
+        const list = entry.canModerate
+          ? listReports()
+          : listReportsForUser(session.uid);
+        send(entry, { type: 'reports', list });
         return;
       }
       if (msg.type === 'report_done' || msg.type === 'report_del') {
         if (!entry.canModerate) return;
         if (msg.type === 'report_del') deleteReport(msg.id | 0);
         else setReportDone(msg.id | 0, !!msg.done);
-        for (const c of clients) {
-          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
-        }
+        pushReports();
         return;
       }
       if (msg.type === 'report_reply') {
-        if (!entry.canModerate) return;
         const text = String(msg.text || '').trim();
         if (!text) return;
-        const r = addReportReply(msg.id | 0, session.uid, session.name, text);
-        if (r && r.byId) {
-          sendDM(
-            r.byId,
-            `💬 **Réponse à ton signalement** (${r.kind === 'bug' ? '🐞 bug' : '⚠ problème'}) :\n> ${r.text.slice(0, 120)}\n\n**${session.name} :** ${text}`,
-          ).catch(() => {});
-        }
-        for (const c of clients) {
-          if (c.canModerate) send(c, { type: 'reports', list: listReports() });
-        }
+        const rep = getReport(msg.id | 0);
+        if (!rep) return;
+        // seulement un modo, ou l'auteur du signalement
+        if (!entry.canModerate && rep.byId !== session.uid) return;
+        addReportReply(msg.id | 0, session.uid, session.name, text);
+        pushReports();
         return;
       }
 
@@ -1193,6 +1202,15 @@ export function registerGateway(app) {
           }
           sendRatingRequest(msg.userId).catch(() => {});
         }
+        pushTickets();
+        return;
+      }
+
+      /* ---- suppression définitive d'un ticket (owner uniquement) ---- */
+      if (msg.type === 'delete_ticket') {
+        if (!entry.isOwner || !msg.userId) return;
+        deleteTicketHard(msg.userId);
+        broadcastAll({ type: 'ticket_gone', userId: msg.userId });
         pushTickets();
         return;
       }
