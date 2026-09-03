@@ -1950,6 +1950,10 @@ function openPanelEditor(p) {
     `<label class="setline">Bannière (URL image) <input type="text" id="peBanner" value="${esc(p?.bannerUrl || '')}" placeholder="https://…/dossiers.png" /></label>` +
     `<label class="setline">Icône (URL, en haut à droite) <input type="text" id="peIcon" value="${esc(p?.iconUrl || '')}" placeholder="https://…/logo.png" /></label>` +
     `<label class="setline">Pied de page <input type="text" id="peFooter" value="${esc(p?.footer || '')}" placeholder="Pour une reprise, ouvre un ticket." /></label>` +
+    `<label class="setline">Pastilles <select id="peStatus">` +
+    `<option value="circle"${(p?.statusStyle || 'circle') === 'circle' ? ' selected' : ''}>🟢 🔴 ronds</option>` +
+    `<option value="square"${p?.statusStyle === 'square' ? ' selected' : ''}>🟩 🟥 carrés</option></select></label>` +
+    `<p class="muted" style="margin:2px 0 8px">La bannière et l'icône sont téléchargées puis jointes au message → elles s'affichent toujours. Mets un lien direct vers une image (finissant par .png / .jpg).</p>` +
     `<div id="peSections"></div>` +
     `<button id="peAddSec" class="linkbtn" type="button">+ Ajouter une section</button>` +
     `<div class="mm-actions" style="margin-top:14px">` +
@@ -1985,6 +1989,7 @@ function gatherPanel() {
     bannerUrl: $('#peBanner').value.trim(),
     iconUrl: $('#peIcon').value.trim(),
     footer: $('#peFooter').value.trim(),
+    statusStyle: $('#peStatus').value,
     sections,
   };
 }

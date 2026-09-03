@@ -406,9 +406,10 @@ function cleanPanel(p) {
     title: String(p.title || '').slice(0, 240),
     description: String(p.description || '').slice(0, 1500),
     color: /^#[0-9a-fA-F]{6}$/.test(p.color || '') ? p.color : '#ff9d00',
-    bannerUrl: String(p.bannerUrl || '').trim().slice(0, 500),
-    iconUrl: String(p.iconUrl || '').trim().slice(0, 500),
+    bannerUrl: String(p.bannerUrl || '').trim().slice(0, 800),
+    iconUrl: String(p.iconUrl || '').trim().slice(0, 800),
     footer: String(p.footer || '').slice(0, 300),
+    statusStyle: ['circle', 'square'].includes(p.statusStyle) ? p.statusStyle : 'circle',
     sections: (Array.isArray(p.sections) ? p.sections : []).slice(0, 20).map((s) => ({
       header: String(s.header || '').slice(0, 120),
       items: (Array.isArray(s.items) ? s.items : []).slice(0, 40).map((it) => ({

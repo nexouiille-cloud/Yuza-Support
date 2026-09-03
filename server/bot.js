@@ -8,6 +8,7 @@ import {
   ButtonStyle,
   EmbedBuilder,
   ActivityType,
+  AttachmentBuilder,
 } from 'discord.js';
 import { config } from './config.js';
 import {
@@ -597,33 +598,79 @@ export async function postConvocation({ targetId, targetName, byName, reason, wh
 }
 
 /* ---------------- panneaux « Reprise » ---------------- */
-const PANEL_EMOJI = { ok: '🟩', no: '🟥', slot: '🟩' };
+const PANEL_EMOJI = {
+  circle: { ok: '🟢', no: '🔴', slot: '🟢' },
+  square: { ok: '🟩', no: '🟥', slot: '🟩' },
+};
+
+// télécharge une image (pour l'attacher au message : Discord l'héberge, elle s'affiche toujours)
+async function fetchImage(url, max = 8 * 1024 * 1024) {
+  const r = await fetch(url, { redirect: 'follow' });
+  if (!r.ok) throw new Error('http ' + r.status);
+  const ab = await r.arrayBuffer();
+  if (ab.byteLength > max) throw new Error('image trop lourde');
+  if (ab.byteLength < 64) throw new Error('fichier vide');
+  const ct = (r.headers.get('content-type') || '').toLowerCase();
+  const low = url.toLowerCase();
+  const ext =
+    ct.includes('gif') || low.includes('.gif') ? 'gif'
+    : ct.includes('webp') || low.includes('.webp') ? 'webp'
+    : ct.includes('jpeg') || ct.includes('jpg') || /\.jpe?g/.test(low) ? 'jpg'
+    : 'png';
+  return { buf: Buffer.from(ab), ext };
+}
+
 export async function publishReprisePanel(id) {
   const p = getPanel(id);
   if (!p) throw new Error('panneau introuvable');
   if (!p.channelId) throw new Error('salon non configuré');
   const ch = await bot.channels.fetch(p.channelId);
   if (!ch || !ch.isTextBased()) throw new Error('salon introuvable');
-  const embed = new EmbedBuilder()
-    .setColor(parseInt(p.color.slice(1), 16) || 0xff9d00);
+
+  const embed = new EmbedBuilder().setColor(parseInt(p.color.slice(1), 16) || 0xff9d00);
   if (p.title) embed.setTitle(p.title);
-  if (p.description) embed.setDescription(p.description);
-  if (p.iconUrl) embed.setThumbnail(p.iconUrl);
-  if (p.bannerUrl) embed.setImage(p.bannerUrl);
   if (p.footer) embed.setFooter({ text: p.footer });
+
+  // sections dans la description (rendu propre, comme sur les panneaux Horizon)
+  const EM = PANEL_EMOJI[p.statusStyle] || PANEL_EMOJI.circle;
+  let desc = p.description ? p.description.trim() + '\n' : '';
   for (const s of p.sections) {
-    const value =
-      s.items.map((it) => `${PANEL_EMOJI[it.status] || '🟥'} ${it.label}`).join('\n') || '—';
-    embed.addFields({ name: s.header || '​', value: value.slice(0, 1024) });
+    if (s.header) desc += `\n**${s.header}**\n`;
+    else desc += '\n';
+    desc += s.items.map((it) => `${EM[it.status] || EM.no} ${it.label}`).join('\n') + '\n';
   }
+  embed.setDescription((desc.trim() || '—').slice(0, 4096));
+
+  // bannière + icône : on les télécharge et on les JOINT au message
+  const files = [];
+  if (p.bannerUrl) {
+    try {
+      const { buf, ext } = await fetchImage(p.bannerUrl);
+      files.push(new AttachmentBuilder(buf, { name: `banner.${ext}` }));
+      embed.setImage(`attachment://banner.${ext}`);
+    } catch (e) {
+      console.error('[bot] bannière panneau non chargée :', e?.message || e);
+      if (/^https?:\/\//.test(p.bannerUrl)) embed.setImage(p.bannerUrl); // fallback URL directe
+    }
+  }
+  if (p.iconUrl) {
+    try {
+      const { buf, ext } = await fetchImage(p.iconUrl);
+      files.push(new AttachmentBuilder(buf, { name: `icon.${ext}` }));
+      embed.setThumbnail(`attachment://icon.${ext}`);
+    } catch (e) {
+      if (/^https?:\/\//.test(p.iconUrl)) embed.setThumbnail(p.iconUrl);
+    }
+  }
+
   if (p.messageId) {
     try {
       const m = await ch.messages.fetch(p.messageId);
-      await m.edit({ embeds: [embed] });
+      await m.edit({ content: '', embeds: [embed], files, attachments: [] });
       return { edited: true, messageId: m.id };
     } catch {}
   }
-  const m = await ch.send({ embeds: [embed] });
+  const m = await ch.send({ embeds: [embed], files });
   setPanelMsg(id, m.id);
   return { edited: false, messageId: m.id };
 }
@@ -637,7 +684,16 @@ export async function postShopAnnounce({ title, text, bannerUrl, linkUrl, linkLa
   const embed = new EmbedBuilder().setColor(0x1fb6d6);
   if (title) embed.setTitle(title);
   if (text) embed.setDescription(text);
-  if (bannerUrl) embed.setImage(bannerUrl);
+  const files = [];
+  if (bannerUrl) {
+    try {
+      const { buf, ext } = await fetchImage(bannerUrl);
+      files.push(new AttachmentBuilder(buf, { name: `shop.${ext}` }));
+      embed.setImage(`attachment://shop.${ext}`);
+    } catch (e) {
+      if (/^https?:\/\//.test(bannerUrl)) embed.setImage(bannerUrl);
+    }
+  }
   if (linkUrl) embed.addFields({ name: '​', value: `🔗 [${linkLabel || 'Voir la boutique'}](${linkUrl})` });
   const row = linkUrl
     ? [
@@ -646,7 +702,7 @@ export async function postShopAnnounce({ title, text, bannerUrl, linkUrl, linkLa
         ),
       ]
     : [];
-  await ch.send({ embeds: [embed], components: row });
+  await ch.send({ embeds: [embed], components: row, files });
 }
 
 /* ---------------- recrutement staff ---------------- */
@@ -660,7 +716,16 @@ export async function publishRecruit() {
     .setDescription(r.open ? r.textOpen : r.textClosed)
     .setColor(r.open ? 0x43d162 : 0xff5f5f)
     .setTimestamp(new Date());
-  if (r.bannerUrl) embed.setImage(r.bannerUrl);
+  const files = [];
+  if (r.bannerUrl) {
+    try {
+      const { buf, ext } = await fetchImage(r.bannerUrl);
+      files.push(new AttachmentBuilder(buf, { name: `recruit.${ext}` }));
+      embed.setImage(`attachment://recruit.${ext}`);
+    } catch (e) {
+      if (/^https?:\/\//.test(r.bannerUrl)) embed.setImage(r.bannerUrl);
+    }
+  }
   if (r.open && r.formUrl) embed.addFields({ name: '​', value: `📝 [Formulaire de candidature](${r.formUrl})` });
   const components =
     r.open && r.formUrl
@@ -676,11 +741,11 @@ export async function publishRecruit() {
   if (r.messageId) {
     try {
       const m = await ch.messages.fetch(r.messageId);
-      await m.edit({ content: content ?? '', embeds: [embed], components, allowedMentions });
+      await m.edit({ content: content ?? '', embeds: [embed], components, allowedMentions, files, attachments: [] });
       return { edited: true, messageId: m.id };
     } catch {}
   }
-  const m = await ch.send({ content, embeds: [embed], components, allowedMentions });
+  const m = await ch.send({ content, embeds: [embed], components, allowedMentions, files });
   setRecruit({ messageId: m.id });
   return { edited: false, messageId: m.id };
 }
