@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self' ws: wss:;" />
+      content="default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://cdn.discordapp.com https://media.discordapp.net; media-src 'self'; connect-src 'self' ws: wss:;" />
 <title>Volt Support</title>
 <link rel="icon" href="/logo.png" />
 <link rel="apple-touch-icon" href="/logo.png" />
@@ -202,19 +202,23 @@
             <div><div class="lbl">Macros</div><div class="hint">réponses pré-écrites — bouton ⚡ dans un ticket</div></div>
           </button>
         </div>
+        <div id="homeTop" class="hidden"></div>
       </section>
 
       <!-- ---- Tickets ---- -->
       <section id="viewTickets" class="view">
         <div id="sidebar">
           <div id="sbHead">
-            <input id="search" type="search" placeholder="Rechercher (nom, message, ID)…" autocomplete="off" />
+            <div class="search-wrap">
+              <span class="search-ico">🔍</span>
+              <input id="search" type="search" placeholder="Rechercher (nom, message, ID)…" autocomplete="off" />
+            </div>
             <div id="filters">
-              <button data-f="open" class="active">Ouverts</button>
-              <button data-f="towait">À traiter</button>
-              <button data-f="unassigned">Non assignés</button>
-              <button data-f="closed">Clôturés</button>
-              <button data-f="all">Tous</button>
+              <button data-f="open" class="active"><span class="fi">🎫</span>Ouverts<span class="fc" data-fc="open">0</span></button>
+              <button data-f="towait"><span class="fi">⏱</span>À traiter<span class="fc" data-fc="towait">0</span></button>
+              <button data-f="unassigned"><span class="fi">🖐️</span>Non assignés<span class="fc" data-fc="unassigned">0</span></button>
+              <button data-f="closed"><span class="fi">✅</span>Clôturés<span class="fc" data-fc="closed">0</span></button>
+              <button data-f="all"><span class="fi">📋</span>Tous<span class="fc" data-fc="all">0</span></button>
             </div>
             <button id="advToggle" class="linkbtn" type="button">＋ filtres avancés</button>
             <div id="advFilters" class="hidden">
@@ -378,6 +382,11 @@
               <h4>👁 Qui a accédé au site — 1re connexion</h4>
               <p class="muted">Visible par toi seul. La toute première connexion de chaque personne (pseudo Discord + date) est enregistrée et gardée pour toujours, même si elle ferme le site. 🟢 = en ligne maintenant.</p>
               <div id="loginList"><div class="muted">—</div></div>
+            </div>
+            <div class="setgrp">
+              <h4>💾 Sauvegarde</h4>
+              <p class="muted">Télécharge un fichier avec absolument toutes les données du site (tickets, réglages, sanctions…). À faire de temps en temps, garde-le en lieu sûr.</p>
+              <button id="backupBtn" class="btn-accent" type="button">Télécharger une sauvegarde</button>
             </div>
             <div class="setgrp">
               <h4>Thème du serveur (par défaut)</h4>

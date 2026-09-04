@@ -48,11 +48,16 @@ function save() {
   }, 200);
 }
 
+// Sauvegarde complète (owner) : toutes les données brutes, en JSON.
+export function exportBackup() {
+  return JSON.stringify(data, null, 2);
+}
+
 export function getTicket(userId) {
   return data.tickets[userId] || null;
 }
 
-export function upsertTicket(userId, username, preview) {
+export function upsertTicket(userId, username, preview, avatarUrl) {
   const now = Date.now();
   const t = data.tickets[userId];
   let created = false;
@@ -61,6 +66,7 @@ export function upsertTicket(userId, username, preview) {
     t.username = username || t.username;
     t.updated_at = now;
     if (preview != null) t.last_preview = preview;
+    if (avatarUrl) t.avatar_url = avatarUrl;
     if (t.status === 'closed') {
       t.status = 'open';
       reopened = true;
@@ -70,6 +76,7 @@ export function upsertTicket(userId, username, preview) {
     data.tickets[userId] = {
       user_id: userId,
       username: username || 'client',
+      avatar_url: avatarUrl || null,
       title: null,
       priority: 'normal',
       status: 'open',

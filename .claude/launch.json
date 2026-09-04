@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vh-loadscreen-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8934", "--directory", "C:\\Users\\Yuza\\Desktop\\vh_loadscreen\\html"],
+      "port": 8934
+    },
+    {
+      "name": "vh-loadscreen-demo-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8935", "--directory", "C:\\Users\\Yuza\\AppData\\Local\\Temp\\claude\\C--Users-Yuza-Desktop-New-folder\\6fa8fdd8-6da5-46a6-872a-981b459e6723\\scratchpad"],
+      "port": 8935
+    },
+    {
+      "name": "vh-loadscreen-recorder",
+      "runtimeExecutable": "C:\\Python314\\python.exe",
+      "runtimeArgs": ["C:\\Users\\Yuza\\Desktop\\vh_loadscreen\\tools\\upload_server.py"],
+      "port": 8936
+    }
+  ]
+}

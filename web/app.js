@@ -28,6 +28,7 @@ let myRoleName = ''; // mon rôle Discord (nom, affiché)
 let canModerate = false; // owner ou grade max : liste des signalements
 let perms = {}; // { announce, recruit, banners, sanctions, shop, webhooks, panels } -> booléens
 let macros = []; // [{name, text}] réponses pré-écrites
+let lastStats = null; // dernières stats reçues (pour le classement sur l'accueil)
 let assignRoles = []; // rôles demandables : [{name, roleId}]
 let slaMin = 15; // seuil d'alerte SLA (minutes)
 
@@ -609,6 +610,35 @@ function renderHome() {
       openTicket(myReq[0].user_id);
     };
   }
+  renderHomeTop();
+}
+
+/* ---------------- classement staff sur l'accueil ---------------- */
+const MEDALS = ['🥇', '🥈', '🥉'];
+function renderHomeTop() {
+  const box = $('#homeTop');
+  if (!box || !lastStats) return;
+  const byStaff = Object.entries(lastStats.byStaff || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!byStaff.length) { box.classList.add('hidden'); return; }
+  const ratings = lastStats.ratingByStaff || {};
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<div class="ht-head"><span>🏆 Top équipe</span><span class="muted">réponses (total)</span></div>` +
+    `<div class="ht-list">` +
+    byStaff
+      .map(([name, n], i) => {
+        const r = ratings[name];
+        return (
+          `<div class="ht-row${name === myName ? ' me' : ''}">` +
+          `<span class="ht-rank">${MEDALS[i] || i + 1 + '.'}</span>` +
+          `<span class="ht-name">${esc(name)}</span>` +
+          (r ? `<span class="ht-rating">⭐ ${r.avg}</span>` : '') +
+          `<span class="ht-n">${n}</span>` +
+          `</div>`
+        );
+      })
+      .join('') +
+    `</div>`;
 }
 
 /* ---------------- présence staff ---------------- */
@@ -877,6 +907,7 @@ function handle(m) {
       renderHome();
       if (!current) showView('home');
       else syncHeader();
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
       break;
 
     case 'presence':
@@ -1202,7 +1233,9 @@ function handle(m) {
     }
 
     case 'stats':
+      lastStats = m.stats;
       renderStats(m.stats);
+      if ($('#viewHome').classList.contains('active')) renderHomeTop();
       break;
 
     case 'dm_failed':
@@ -1336,6 +1369,20 @@ $('#backToList').addEventListener('click', () =>
 );
 
 /* ---------------- rendu sidebar ---------------- */
+// couleur stable dérivée de l'ID (pour l'avatar de secours)
+function idColor(id) {
+  let h = 0;
+  for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 60% 40%)`;
+}
+function avatarHtml(t) {
+  const letter = esc((t.username || '?').trim().charAt(0).toUpperCase() || '?');
+  const bg = idColor(t.user_id);
+  const img = t.avatar_url
+    ? `<img src="${esc(t.avatar_url)}" alt="" loading="lazy" onerror="this.remove()" />`
+    : '';
+  return `<span class="tk-av" style="background:${bg}">${img}<span class="tk-av-fb">${letter}</span></span>`;
+}
 function ticketRow(t) {
   const el = document.createElement('div');
   const mine = t.assignee_id && t.assignee_id === myId;
@@ -1345,39 +1392,59 @@ function ticketRow(t) {
     (t.user_id === current ? ' active' : '') +
     (t.status === 'closed' ? ' closed' : '') +
     (bl ? ' bl' : '') +
-    (t.assignee_id && !mine ? ' assigned-other' : '');
+    (t.assignee_id && !mine ? ' assigned-other' : '') +
+    (t.priority ? ' pri-' + t.priority : '');
   const reqMine = t.requested_role && myRoles.includes(String(t.requested_role.roleId));
   if (reqMine) el.className += ' req-mine';
   el.dataset.uid = t.user_id;
   const pri = t.priority && t.priority !== 'normal'
-    ? `<span class="pri ${t.priority}"></span>`
+    ? `<span class="pri ${t.priority}" title="priorité ${t.priority}"></span>`
     : '';
   const tags = [];
   if (t.status !== 'closed') {
     if (t.waiting === 'staff') {
       const mn = Math.max(0, Math.round((Date.now() - (t.last_client_at || Date.now())) / 60000));
-      tags.push(`<span class="sla${mn > slaMin ? ' late' : ''}">⏱ ${mn}m</span>`);
+      tags.push(`<span class="tag-pill sla${mn > slaMin ? ' late' : ''}">⏱ ${mn}m</span>`);
     } else if (t.waiting === 'client') {
-      tags.push(`<span class="wait">attente client</span>`);
+      tags.push(`<span class="tag-pill wait">💬 attente client</span>`);
     }
   }
   if (t.requested_role) {
-    tags.push(`<span class="req">🙋 ${esc(t.requested_role.name)}${reqMine ? ' (toi)' : ''}</span>`);
+    tags.push(`<span class="tag-pill req">🙋 ${esc(t.requested_role.name)}${reqMine ? ' (toi)' : ''}</span>`);
   }
+  if (t.assignee_id) {
+    tags.push(`<span class="tag-pill lock${mine ? ' mine' : ''}">🔒 ${mine ? 'toi' : esc(t.assignee_name || '?')}</span>`);
+  }
+  if (bl) tags.push(`<span class="tag-pill blmark">🚫 bloqué</span>`);
   el.innerHTML =
-    `<div class="n"><span>${pri}${esc(ticketLabel(t))}</span>` +
+    avatarHtml(t) +
+    `<div class="tk-body">` +
+    `<div class="n">${pri}<span class="tk-name">${esc(ticketLabel(t))}</span>` +
     `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
     `<div class="p">${esc(t.last_preview || '')}</div>` +
     (tags.length ? `<div class="tags">${tags.join('')}</div>` : '') +
-    (t.assignee_id
-      ? `<div class="lock">🔒 ${mine ? 'toi' : esc(t.assignee_name || '?')}</div>`
-      : '') +
-    (bl ? `<div class="blmark">🚫 bloqué</div>` : '');
+    `</div>`;
   el.addEventListener('click', () => openTicket(t.user_id));
   return el;
 }
 
+function updateFilterCounts() {
+  const all = [...tickets.values()];
+  const counts = {
+    open: all.filter((t) => t.status !== 'closed').length,
+    towait: all.filter((t) => t.status !== 'closed' && t.waiting === 'staff').length,
+    unassigned: all.filter((t) => t.status !== 'closed' && !t.assignee_id).length,
+    closed: all.filter((t) => t.status === 'closed').length,
+    all: all.length,
+  };
+  for (const [k, v] of Object.entries(counts)) {
+    const el = document.querySelector(`.fc[data-fc="${k}"]`);
+    if (el) el.textContent = v;
+  }
+}
+
 function renderSidebar() {
+  updateFilterCounts();
   let list = [...tickets.values()];
   if (filterMode === 'open') list = list.filter((t) => t.status !== 'closed');
   else if (filterMode === 'closed')
@@ -1845,6 +1912,14 @@ $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
 });
 $('#obReview').addEventListener('click', () => showOnboarding(true));
+$('#backupBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = '/api/backup';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus('Sauvegarde téléchargée.');
+});
 $('#setMacroAdd').addEventListener('click', () => $('#setMacros').appendChild(macroRow('', '')));
 $('#panelPublish').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;

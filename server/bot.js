@@ -250,7 +250,9 @@ bot.on(Events.MessageCreate, async (msg) => {
     }
 
     const preview = (text || '📎 pièce jointe').slice(0, 120);
-    const res = upsertTicket(userId, username, preview);
+    let avatarUrl = null;
+    try { avatarUrl = msg.author.displayAvatarURL({ extension: 'png', size: 64 }); } catch {}
+    const res = upsertTicket(userId, username, preview, avatarUrl);
     const stored = addMessage(userId, 'client', username, text, atts);
     onClientMessage(stored, res);
     if (res.created || res.reopened) {

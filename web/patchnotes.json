@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-09-05",
+    "title": "Liste de tickets relookée, sauvegarde & classement",
+    "items": [
+      "Liste des tickets relookée : la vraie photo de profil Discord du client s'affiche à côté de son nom (sinon un rond de couleur avec son initiale).",
+      "Barre de recherche + filtres (Ouverts / À traiter / Non assignés / Clôturés / Tous) redessinés en pastilles avec le nombre de tickets affiché en direct sur chacun.",
+      "Étiquettes du ticket (SLA en retard, en attente, demande de rôle, verrouillé…) redessinées en petites pastilles plus lisibles, avec un léger liseré de couleur selon la priorité.",
+      "Sauvegarde complète (⚙️ Réglages, owner) : un bouton télécharge un fichier avec absolument toutes les données du site (tickets, réglages, sanctions…), à garder de côté au cas où.",
+      "Classement de l'équipe sur l'accueil : top 5 du nombre de réponses avec médailles 🥇🥈🥉 et la note moyenne ⭐ de chacun."
+    ]
+  },
+  {
     "date": "2026-09-02",
     "title": "Présence, modération & signature",
     "items": [

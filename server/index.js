@@ -6,7 +6,7 @@ import fastifyWebsocket from '@fastify/websocket';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
-import { config } from './config.js';
+import { config, maxLevel } from './config.js';
 import {
   startBot,
   setClientMessageHandler,
@@ -32,6 +32,7 @@ import {
   effectiveTheme,
   getArchivedById,
   getHookBySecret,
+  exportBackup,
 } from './db.js';
 import { initPush } from './push.js';
 import { saveBuffer, UPLOAD_DIR } from './uploads.js';
@@ -226,6 +227,20 @@ app.get('/api/archive/:id', async (req, reply) => {
     .header('Content-Disposition', `attachment; filename="archive-${name}-${a.id}.html"`)
     .type('text/html; charset=utf-8')
     .send(buildTranscript({ ...a, status: 'clôturé (archivé)' }, a.messages || []));
+});
+
+// --- Sauvegarde complète des données (owner uniquement) ---
+app.get('/api/backup', async (req, reply) => {
+  const s = sessionOf(req);
+  if (!s) return reply.code(401).send({ error: 'unauthorized' });
+  const { isStaff, level } = await getStaffMember(s.uid);
+  const isOwner = config.ownerIds.length ? config.ownerIds.includes(s.uid) : level >= maxLevel;
+  if (!isStaff || !isOwner) return reply.code(403).send({ error: 'forbidden' });
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  reply
+    .header('Content-Disposition', `attachment; filename="volt-backup-${stamp}.json"`)
+    .type('application/json')
+    .send(exportBackup());
 });
 
 // --- Pièce jointe staff -> client ---
