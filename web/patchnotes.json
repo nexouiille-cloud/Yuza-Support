@@ -1,6 +1,23 @@
 [
   {
     "date": "2026-09-11",
+    "title": "Corrections visuelles + permission organigramme",
+    "items": [
+      "Organigramme et Journal d'activité recalés sur le même gabarit que le reste du site (marges, alignement) — ils avaient été oubliés lors de leur ajout.",
+      "Icônes des petits boutons (▲▼✏️🗑️ etc.) recentrées — certaines étaient décalées ou de travers selon les écrans.",
+      "Organigramme : qui peut le modifier se règle maintenant comme les autres permissions (⚙️ Réglages → Qui peut faire quoi), au lieu d'être réservé strictement à l'owner."
+    ]
+  },
+  {
+    "date": "2026-09-11",
+    "title": "Liens directs vers une section",
+    "items": [
+      "L'adresse dans la barre du navigateur reflète maintenant la section ouverte (ex : …/#moderation, …/#tickets, …/#statistiques).",
+      "Copier-coller ce lien à quelqu'un (ou se le mettre en favori) rouvre le site directement sur cette section, plutôt que sur l'accueil."
+    ]
+  },
+  {
+    "date": "2026-09-11",
     "title": "Organigramme",
     "items": [
       "Nouvel onglet 🗂️ Organigramme : les rangs de l'équipe (VoltGroup, Directeur Staff, Helper…) avec une description et la liste des membres Discord de chaque rang — vraie photo de profil affichée pour chacun.",

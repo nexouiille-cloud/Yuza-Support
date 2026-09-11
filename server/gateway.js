@@ -383,27 +383,27 @@ export function registerGateway(app) {
         return;
       }
 
-      /* ---- organigramme (lecture pour tous, édition owner) ---- */
+      /* ---- organigramme (lecture pour tous, édition selon la permission "orgchart") ---- */
       if (msg.type === 'get_orgchart') {
         send(entry, { type: 'orgchart', list: listOrgChart() });
         return;
       }
       if (msg.type === 'orgchart_save') {
-        if (!entry.isOwner) return;
+        if (!entry.can?.orgchart) return;
         const g = upsertOrgGroup(msg.group || {});
         if (g) logAct(session, 'orgchart', null, `rang « ${g.title} » (${g.members.length} membre${g.members.length > 1 ? 's' : ''})`);
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }
       if (msg.type === 'orgchart_delete') {
-        if (!entry.isOwner || !msg.id) return;
+        if (!entry.can?.orgchart || !msg.id) return;
         deleteOrgGroup(msg.id);
         logAct(session, 'orgchart', null, 'rang supprimé');
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }
       if (msg.type === 'orgchart_move') {
-        if (!entry.isOwner || !msg.id) return;
+        if (!entry.can?.orgchart || !msg.id) return;
         moveOrgGroup(msg.id, msg.dir);
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;

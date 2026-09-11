@@ -361,11 +361,11 @@ export function getSettings() {
 }
 
 /* ---------------- permissions par grade + macros ---------------- */
-export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels'];
+export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart'];
 export function effectivePerms() {
   const hi = Math.max(2, maxLevel - 2); // "directeur staff" par défaut
   const top = Math.max(2, maxLevel); // "voltgroup" par défaut
-  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top };
+  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top, orgchart: hi };
   const s = data.settings.perms || {};
   const out = {};
   for (const k of PERM_KEYS) {

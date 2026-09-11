@@ -1,5 +1,6 @@
 let ws = null;
 let current = null;
+let hashOpened = false; // pour n'ouvrir la section indiquée dans le lien (#moderation…) qu'une fois, au 1er hello
 
 const tickets = new Map(); // userId -> ticket
 const msgCache = new Map(); // userId -> [messages]
@@ -234,6 +235,9 @@ function playIntro() {
 
 function showView(name) {
   const id = 'view' + name.charAt(0).toUpperCase() + name.slice(1);
+  if (location.hash.slice(1) !== name) {
+    history.replaceState(null, '', '#' + name); // lien copiable qui rouvre cette section
+  }
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   $$('#rail .navbtn[data-view]').forEach((b) =>
     b.classList.toggle('active', b.dataset.view === name),
@@ -272,8 +276,8 @@ function showView(name) {
   }
   if (name === 'orgchart') {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_orgchart' }));
-    $('#ogAddBox').classList.toggle('hidden', settingsScope !== 'owner');
-    $('#ogEditHint').classList.toggle('hidden', settingsScope !== 'owner');
+    $('#ogAddBox').classList.toggle('hidden', !perms.orgchart);
+    $('#ogEditHint').classList.toggle('hidden', !perms.orgchart);
     renderOrgChart();
   }
   if (name === 'convoke' && ws && ws.readyState === 1)
@@ -920,8 +924,12 @@ function handle(m) {
       renderPresence();
       renderSidebar();
       renderHome();
-      if (!current) showView('home');
-      else syncHeader();
+      if (!current) {
+        const h = !hashOpened && location.hash.slice(1);
+        hashOpened = true;
+        const sec = h && document.getElementById('view' + h.charAt(0).toUpperCase() + h.slice(1));
+        showView(sec ? h : 'home');
+      } else syncHeader();
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
       break;
 
@@ -1526,7 +1534,7 @@ function ogGroupHtml(g, idx, total, isOwner) {
 
 function renderOrgChart() {
   const box = $('#ogTree');
-  const isOwner = settingsScope === 'owner';
+  const isOwner = !!perms.orgchart;
   if (!orgChart.length) {
     box.innerHTML = isOwner
       ? "<p class=\"muted\">Vide pour l'instant — ajoute le premier rang ci-dessus.</p>"
@@ -2061,6 +2069,7 @@ function fillSettings(s, scope) {
 const PERM_FIELDS = {
   permAnnounce: 'announce', permRecruit: 'recruit', permBanners: 'banners',
   permSanctions: 'sanctions', permShop: 'shop', permPanels: 'panels', permWebhooks: 'webhooks',
+  permOrgchart: 'orgchart',
 };
 function permOptions(cur) {
   let html = '';
