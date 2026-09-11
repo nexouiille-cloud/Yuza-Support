@@ -29,6 +29,11 @@ let canModerate = false; // owner ou grade max : liste des signalements
 let perms = {}; // { announce, recruit, banners, sanctions, shop, webhooks, panels } -> booléens
 let macros = []; // [{name, text}] réponses pré-écrites
 let lastStats = null; // dernières stats reçues (pour le classement sur l'accueil)
+let activity = []; // journal d'activité (qui a fait quoi)
+let actFilter = 'all'; // filtre courant du journal
+let orgChart = []; // organigramme : liste ordonnée de rangs {id,title,description,members:[...]}
+let ogMembers = []; // membres du rang en cours d'édition dans le formulaire
+let ogEditId = null; // id du rang en cours d'édition (null = ajout)
 let assignRoles = []; // rôles demandables : [{name, roleId}]
 let slaMin = 15; // seuil d'alerte SLA (minutes)
 
@@ -261,6 +266,16 @@ function showView(name) {
   }
   if (name === 'report' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_reports' }));
+  if (name === 'activity') {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_activity' }));
+    renderActivity();
+  }
+  if (name === 'orgchart') {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_orgchart' }));
+    $('#ogAddBox').classList.toggle('hidden', settingsScope !== 'owner');
+    $('#ogEditHint').classList.toggle('hidden', settingsScope !== 'owner');
+    renderOrgChart();
+  }
   if (name === 'convoke' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
   if (name === 'banners' && perms.banners && typeof initBannerEditor === 'function') initBannerEditor();
@@ -922,6 +937,7 @@ function handle(m) {
     case 'members':
       renderMembersView(m);
       renderConvResults(m);
+      renderOgResults(m);
       break;
 
     case 'suggestions':
@@ -1243,7 +1259,303 @@ function handle(m) {
         "⚠ impossible d'envoyer le MP à ce client (il a peut-être fermé ses MP).",
       );
       break;
+
+    case 'activity_list':
+      activity = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewActivity').classList.contains('active')) renderActivity();
+      break;
+
+    case 'orgchart':
+      orgChart = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewOrgchart').classList.contains('active')) renderOrgChart();
+      break;
+
+    case 'activity':
+      if (m.entry) {
+        activity.unshift(m.entry);
+        if (activity.length > 400) activity.length = 400;
+        if ($('#viewActivity').classList.contains('active')) renderActivity();
+      }
+      break;
   }
+}
+
+/* ---------------- journal d'activité ---------------- */
+const ACT_META = {
+  reply: { icon: '💬', label: 'a répondu' },
+  note: { icon: '📝', label: 'a ajouté une note' },
+  take: { icon: '✋', label: 'a pris le ticket' },
+  release: { icon: '👋', label: 'a lâché le ticket' },
+  close: { icon: '✅', label: 'a clôturé' },
+  reopen: { icon: '♻️', label: 'a rouvert' },
+  rename: { icon: '✏️', label: 'a renommé' },
+  priority: { icon: '🔺', label: 'a changé la priorité' },
+  escalate: { icon: '⏫', label: 'a changé le niveau' },
+  category: { icon: '🏷️', label: 'a catégorisé' },
+  sanction: { icon: '⛔', label: 'a sanctionné' },
+  unsanction: { icon: '➖', label: 'a retiré une sanction' },
+  delete: { icon: '🗑️', label: 'a supprimé un ticket' },
+  blacklist: { icon: '🚫', label: 'blacklist' },
+  settings: { icon: '⚙️', label: 'a modifié les réglages' },
+  announce: { icon: '📣', label: 'a publié une annonce' },
+  panel: { icon: '📊', label: 'a publié un panneau' },
+  shop: { icon: '🛒', label: 'a publié une annonce boutique' },
+  recruit: { icon: '🧑‍💼', label: 'recrutement staff' },
+  orgchart: { icon: '🗂️', label: 'a modifié l\'organigramme' },
+};
+const ACT_GROUPS = [
+  ['all', 'Tout'],
+  ['tickets', 'Tickets'],
+  ['sanction', 'Sanctions'],
+  ['settings', 'Réglages'],
+  ['announce', 'Annonces'],
+];
+const TICKET_ACTIONS = new Set([
+  'reply', 'note', 'take', 'release', 'close', 'reopen',
+  'rename', 'priority', 'escalate', 'category', 'delete', 'blacklist',
+]);
+
+function actMatchesFilter(a) {
+  if (actFilter === 'all') return true;
+  if (actFilter === 'tickets') return TICKET_ACTIONS.has(a.action);
+  if (actFilter === 'sanction') return a.action === 'sanction' || a.action === 'unsanction';
+  if (actFilter === 'settings') return a.action === 'settings' || a.action === 'orgchart';
+  if (actFilter === 'announce') return a.action === 'announce' || a.action === 'shop' || a.action === 'panel' || a.action === 'recruit';
+  return a.action === actFilter;
+}
+
+function renderActivity() {
+  const filt = $('#actFilters');
+  if (filt && !filt.dataset.built) {
+    filt.dataset.built = '1';
+    filt.innerHTML = ACT_GROUPS.map(
+      ([k, lbl]) => `<button data-af="${k}"${k === actFilter ? ' class="active"' : ''}>${lbl}</button>`,
+    ).join('');
+    filt.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-af]');
+      if (!b) return;
+      actFilter = b.dataset.af;
+      filt.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      renderActivity();
+    });
+  }
+
+  const box = $('#actList');
+  if (!box) return;
+  const rows = activity.filter(actMatchesFilter);
+  $('#actCount').textContent = rows.length ? `${rows.length} action${rows.length > 1 ? 's' : ''}` : '';
+  if (!rows.length) {
+    box.innerHTML = '<p class="muted">Aucune action pour ce filtre.</p>';
+    return;
+  }
+  box.innerHTML = rows
+    .map((a) => {
+      const m = ACT_META[a.action] || { icon: '•', label: a.action };
+      const tk = a.ticket_id
+        ? `<button class="act-tk" data-uid="${esc(a.ticket_id)}">${esc(a.ticket_name || 'ticket')}</button>`
+        : '';
+      const det = a.detail ? `<span class="act-det">${esc(a.detail)}</span>` : '';
+      return (
+        `<div class="act-row">` +
+        `<span class="act-ico">${m.icon}</span>` +
+        `<div class="act-main">` +
+        `<div class="act-line"><b>${esc(a.actor_name)}</b> ${esc(m.label)} ${tk}</div>` +
+        (det ? `<div class="act-sub">${det}</div>` : '') +
+        `</div>` +
+        `<span class="act-time" title="${new Date(a.at).toLocaleString()}">${ago(a.at)}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  box.querySelectorAll('.act-tk').forEach((b) => {
+    b.addEventListener('click', () => {
+      const uid = b.dataset.uid;
+      if (tickets.has(uid)) {
+        showView('tickets');
+        openTicket(uid);
+      } else {
+        setStatus('Ce ticket n\'est plus dans la liste active.');
+      }
+    });
+  });
+}
+
+/* ---------------- organigramme (rangs avec plusieurs membres chacun) ---------------- */
+let ogSearchTimer = null;
+$('#ogSearch').addEventListener('input', (e) => {
+  clearTimeout(ogSearchTimer);
+  const q = e.target.value.trim();
+  ogSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+
+function renderOgResults(m) {
+  if (!$('#viewOrgchart').classList.contains('active')) return;
+  const box = $('#ogSearchResults');
+  const q = $('#ogSearch').value.trim();
+  if (!m.members || !m.members.length || !q) {
+    box.innerHTML = '';
+    return;
+  }
+  const already = new Set(ogMembers.map((x) => x.discordId));
+  box.innerHTML = m.members
+    .filter((mem) => !already.has(mem.id))
+    .slice(0, 20)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}" data-avatar="${esc(mem.avatar || '')}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
+    b.addEventListener('click', () => {
+      ogMembers.push({ discordId: b.dataset.id, name: b.dataset.name, avatarUrl: b.dataset.avatar });
+      $('#ogSearchResults').innerHTML = '';
+      $('#ogSearch').value = '';
+      renderOgChips();
+      updateOgSaveState();
+    }),
+  );
+}
+
+function renderOgChips() {
+  const box = $('#ogMembersChips');
+  box.innerHTML = ogMembers
+    .map(
+      (m, i) =>
+        `<span class="og-chip"><img src="${esc(m.avatarUrl)}" alt="" />${esc(m.name)}` +
+        `<button type="button" data-rm="${i}" title="Retirer">✕</button></span>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-rm]').forEach((b) =>
+    b.addEventListener('click', () => {
+      ogMembers.splice(Number(b.dataset.rm), 1);
+      renderOgChips();
+      updateOgSaveState();
+    }),
+  );
+}
+
+function updateOgSaveState() {
+  $('#ogSaveBtn').disabled = !($('#ogTitle').value.trim() && ogMembers.length);
+}
+$('#ogTitle').addEventListener('input', updateOgSaveState);
+
+function resetOgForm() {
+  ogEditId = null;
+  ogMembers = [];
+  $('#ogSearch').value = '';
+  $('#ogSearchResults').innerHTML = '';
+  $('#ogMembersChips').innerHTML = '';
+  $('#ogTitle').value = '';
+  $('#ogDesc').value = '';
+  $('#ogFormTitle').textContent = '+ Ajouter un rang';
+  $('#ogSaveBtn').textContent = 'Ajouter le rang';
+  $('#ogCancelBtn').classList.add('hidden');
+  updateOgSaveState();
+}
+
+$('#ogSaveBtn').addEventListener('click', () => {
+  const title = $('#ogTitle').value.trim();
+  if (!title || !ogMembers.length || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'orgchart_save',
+      group: {
+        id: ogEditId || undefined,
+        title,
+        description: $('#ogDesc').value.trim(),
+        members: ogMembers,
+      },
+    }),
+  );
+  resetOgForm();
+});
+$('#ogCancelBtn').addEventListener('click', resetOgForm);
+
+function ogEditGroup(g) {
+  ogEditId = g.id;
+  ogMembers = g.members.map((m) => ({ ...m }));
+  $('#ogSearch').value = '';
+  $('#ogSearchResults').innerHTML = '';
+  renderOgChips();
+  $('#ogTitle').value = g.title || '';
+  $('#ogDesc').value = g.description || '';
+  $('#ogFormTitle').textContent = `✏️ Modifier « ${g.title} »`;
+  $('#ogSaveBtn').textContent = 'Enregistrer les modifications';
+  $('#ogCancelBtn').classList.remove('hidden');
+  updateOgSaveState();
+  $('#ogAddBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function ogDeleteGroup(id, title) {
+  if (!confirm(`Supprimer le rang « ${title} » de l'organigramme ?`)) return;
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_delete', id }));
+}
+
+function ogMoveGroup(id, dir) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_move', id, dir }));
+}
+
+function ogGroupHtml(g, idx, total, isOwner) {
+  const actions = isOwner
+    ? `<div class="og-actions">` +
+      `<button class="og-a" data-og-up="${g.id}" ${idx === 0 ? 'disabled' : ''} title="Monter">▲</button>` +
+      `<button class="og-a" data-og-down="${g.id}" ${idx === total - 1 ? 'disabled' : ''} title="Descendre">▼</button>` +
+      `<button class="og-a" data-og-edit="${g.id}" title="Modifier">✏️</button>` +
+      `<button class="og-a" data-og-del="${g.id}" title="Supprimer">🗑️</button>` +
+      `</div>`
+    : '';
+  return (
+    `<div class="og-group">` +
+    `<div class="og-ghead"><div><div class="og-gtitle">${esc(g.title)}</div>` +
+    (g.description ? `<div class="og-gdesc">${esc(g.description)}</div>` : '') +
+    `</div>${actions}</div>` +
+    `<div class="og-members">` +
+    g.members
+      .map(
+        (m) =>
+          `<span class="og-member"><img src="${esc(m.avatarUrl)}" alt="" onerror="this.style.visibility='hidden'" />${esc(m.name)}</span>`,
+      )
+      .join('') +
+    `</div>` +
+    `</div>`
+  );
+}
+
+function renderOrgChart() {
+  const box = $('#ogTree');
+  const isOwner = settingsScope === 'owner';
+  if (!orgChart.length) {
+    box.innerHTML = isOwner
+      ? "<p class=\"muted\">Vide pour l'instant — ajoute le premier rang ci-dessus.</p>"
+      : "<p class=\"muted\">Pas encore d'organigramme.</p>";
+    return;
+  }
+  box.innerHTML =
+    `<div class="og-list">` +
+    orgChart.map((g, i) => ogGroupHtml(g, i, orgChart.length, isOwner)).join('') +
+    `</div>`;
+  if (!isOwner) return;
+  box.querySelectorAll('[data-og-edit]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const g = orgChart.find((x) => x.id === Number(b.dataset.ogEdit));
+      if (g) ogEditGroup(g);
+    }),
+  );
+  box.querySelectorAll('[data-og-del]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const g = orgChart.find((x) => x.id === Number(b.dataset.ogDel));
+      if (g) ogDeleteGroup(g.id, g.title);
+    }),
+  );
+  box.querySelectorAll('[data-og-up]').forEach((b) =>
+    b.addEventListener('click', () => ogMoveGroup(Number(b.dataset.ogUp), -1)),
+  );
+  box.querySelectorAll('[data-og-down]').forEach((b) =>
+    b.addEventListener('click', () => ogMoveGroup(Number(b.dataset.ogDown), 1)),
+  );
 }
 
 /* ---------------- stats ---------------- */

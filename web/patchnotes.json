@@ -1,5 +1,25 @@
 [
   {
+    "date": "2026-09-11",
+    "title": "Organigramme",
+    "items": [
+      "Nouvel onglet 🗂️ Organigramme : les rangs de l'équipe (VoltGroup, Directeur Staff, Helper…) avec une description et la liste des membres Discord de chaque rang — vraie photo de profil affichée pour chacun.",
+      "Recherche directe des membres Discord (pseudo, tag ou ID) pour les ajouter à un rang, plusieurs personnes peuvent partager le même rang.",
+      "Modifiable à volonté (titre, description, membres, ordre des rangs) — visible par toute l'équipe, éditable par l'owner uniquement."
+    ]
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Journal d'activité",
+    "items": [
+      "Nouvel onglet 📋 Journal d'activité, visible par toute l'équipe : qui a répondu à quel ticket, qui l'a pris / clôturé / rouvert, qui a changé la priorité ou le niveau, qui a catégorisé, qui a sanctionné, qui a supprimé un ticket, qui a modifié les réglages, publié une annonce / un panneau / une annonce boutique, ouvert ou fermé le recrutement.",
+      "Filtres rapides : Tout / Tickets / Sanctions / Réglages / Annonces.",
+      "Chaque ligne montre qui, quoi, le détail, depuis combien de temps, et un lien cliquable vers le ticket concerné.",
+      "Mise à jour en direct : quand un staff fait une action, elle apparaît en haut du journal chez tout le monde.",
+      "Les 3000 dernières actions sont gardées (incluses dans la sauvegarde)."
+    ]
+  },
+  {
     "date": "2026-09-05",
     "title": "Liste de tickets relookée, sauvegarde & classement",
     "items": [

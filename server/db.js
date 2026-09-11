@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [], convocations: [], panels: [], hooks: [] };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [], convocations: [], panels: [], hooks: [], activity: [], orgChart: [] };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -31,6 +31,8 @@ if (existsSync(FILE)) {
     data.convocations ||= [];
     data.panels ||= [];
     data.hooks ||= [];
+    data.activity ||= [];
+    data.orgChart ||= [];
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -51,6 +53,89 @@ function save() {
 // Sauvegarde complète (owner) : toutes les données brutes, en JSON.
 export function exportBackup() {
   return JSON.stringify(data, null, 2);
+}
+
+/* ---------------- journal d'activité (qui a fait quoi) ---------------- */
+// Visible par toute l'équipe. Garde les 3000 dernières actions.
+export function logActivity(actorId, actorName, action, ticketId, ticketName, detail) {
+  const entry = {
+    id: ++data.seq,
+    at: Date.now(),
+    actor_id: actorId || null,
+    actor_name: actorName || 'Système',
+    action, // 'reply' | 'note' | 'take' | 'release' | 'close' | 'reopen' | 'rename' | 'priority' | 'escalate' | 'category' | 'sanction' | 'unsanction' | 'delete' | 'blacklist' | 'settings' | 'announce' | 'panel' | 'shop' | 'recruit'
+    ticket_id: ticketId || null,
+    ticket_name: ticketName || null,
+    detail: (detail == null ? '' : String(detail)).slice(0, 200),
+  };
+  data.activity.push(entry);
+  if (data.activity.length > 3000) data.activity = data.activity.slice(-3000);
+  save();
+  return entry;
+}
+
+export function listActivity(limit = 300) {
+  return data.activity.slice(-limit).reverse();
+}
+
+/* ---------------- organigramme ---------------- */
+// Liste ordonnée de RANGS (comme les paliers du serveur Discord) : chaque rang a
+// un titre, une description libre, et une liste de membres Discord (avatar en cache).
+// Plusieurs personnes peuvent partager le même rang (ex : 3 fondateurs). Éditable
+// par l'owner uniquement, visible par toute l'équipe.
+export function listOrgChart() {
+  return data.orgChart.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+}
+
+function cleanOrgMembers(members) {
+  if (!Array.isArray(members)) return [];
+  return members
+    .map((m) => ({
+      discordId: String(m.discordId || '').trim(),
+      name: String(m.name || '').slice(0, 60),
+      avatarUrl: String(m.avatarUrl || '').slice(0, 600),
+    }))
+    .filter((m) => m.discordId)
+    .slice(0, 30);
+}
+
+export function upsertOrgGroup(group) {
+  const clean = {
+    title: String(group.title || '').slice(0, 60),
+    description: String(group.description || '').slice(0, 300),
+    members: cleanOrgMembers(group.members),
+  };
+  if (!clean.title) return null;
+  if (group.id) {
+    const g = data.orgChart.find((x) => x.id === Number(group.id));
+    if (!g) return null;
+    Object.assign(g, clean);
+    save();
+    return g;
+  }
+  const maxOrder = Math.max(0, ...data.orgChart.map((x) => x.order ?? 0));
+  const g = { id: ++data.seq, ...clean, order: maxOrder + 1 };
+  data.orgChart.push(g);
+  save();
+  return g;
+}
+
+export function deleteOrgGroup(id) {
+  id = Number(id);
+  data.orgChart = data.orgChart.filter((x) => x.id !== id);
+  save();
+}
+
+export function moveOrgGroup(id, dir) {
+  id = Number(id);
+  const list = data.orgChart.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const idx = list.findIndex((x) => x.id === id);
+  const swapIdx = idx + (dir < 0 ? -1 : 1);
+  if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
+  const tmp = list[idx].order ?? 0;
+  list[idx].order = list[swapIdx].order ?? 0;
+  list[swapIdx].order = tmp;
+  save();
 }
 
 export function getTicket(userId) {

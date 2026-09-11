@@ -147,6 +147,8 @@
       <button class="navbtn" data-view="convoke"><span>📌</span><span class="tip">Convocation</span></button>
       <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestions</span></button>
       <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Signaler un bug</span></button>
+      <button class="navbtn" data-view="activity"><span>📋</span><span class="tip">Journal d'activité</span></button>
+      <button class="navbtn" data-view="orgchart"><span>🗂️</span><span class="tip">Organigramme</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
       <button class="navbtn hidden" id="bannersNav" data-view="banners"><span>🎨</span><span class="tip">Bannières</span></button>
@@ -299,6 +301,38 @@
         <textarea id="sugText" rows="3" placeholder="Ta suggestion…"></textarea>
         <div class="mm-actions"><button id="sugSend" class="btn-accent" type="button">Envoyer</button><span id="sugStatus" class="who"></span></div>
         <div id="sugList" class="hidden"></div>
+      </section>
+
+      <!-- ---- Journal d'activité ---- -->
+      <section id="viewActivity" class="view">
+        <div class="stats-head"><h2>📋 Journal d'activité</h2><span id="actCount" class="who"></span></div>
+        <p class="muted" style="margin:-8px 0 14px">Qui a fait quoi, en direct. Visible par toute l'équipe.</p>
+        <div id="actFilters"></div>
+        <div id="actList"></div>
+      </section>
+
+      <!-- ---- Organigramme ---- -->
+      <section id="viewOrgchart" class="view">
+        <div class="stats-head"><h2>🗂️ Organigramme</h2></div>
+        <p class="muted">Les rangs de l'équipe, du plus haut au plus bas. <span id="ogEditHint" class="hidden">Modifiable par toi (owner) uniquement.</span></p>
+
+        <div id="ogAddBox" class="setgrp hidden">
+          <h4 id="ogFormTitle">+ Ajouter un rang</h4>
+          <label>Nom du rang</label>
+          <input id="ogTitle" type="text" placeholder="ex : VoltGroup, Directeur Staff, Helper…" maxlength="60" />
+          <label>Description (optionnel)</label>
+          <input id="ogDesc" type="text" placeholder="ex : Gestion générale du serveur" maxlength="300" />
+          <label>Membres de ce rang</label>
+          <input id="ogSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
+          <div id="ogSearchResults"></div>
+          <div id="ogMembersChips"></div>
+          <div class="mm-actions">
+            <button id="ogSaveBtn" class="btn-accent" type="button" disabled>Ajouter le rang</button>
+            <button id="ogCancelBtn" class="linkbtn hidden" type="button">Annuler</button>
+          </div>
+        </div>
+
+        <div id="ogTree"></div>
       </section>
 
       <!-- ---- Éditeur de bannières (owner) ---- -->

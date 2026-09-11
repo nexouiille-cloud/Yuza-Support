@@ -156,6 +156,7 @@ export async function refreshMembers() {
         id: m.id,
         name: m.nickname || m.user.globalName || m.user.username,
         tag: m.user.username,
+        avatar: m.displayAvatarURL({ extension: 'png', size: 128 }),
         roles: [...m.roles.cache.values()]
           .filter((r) => r.name !== '@everyone')
           .sort((a, b) => b.position - a.position)

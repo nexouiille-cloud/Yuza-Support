@@ -54,10 +54,14 @@ const host = process.env.HOST || '127.0.0.1';
 
 // IDs Discord des "owners" : accès complet aux Réglages.
 // Vide => on retombe sur "niveau le plus élevé".
-const ownerIds = (process.env.OWNER_IDS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Un ID est toujours ajouté ici en plus de la variable d'env (jamais retirable
+// depuis les Variables Railway, ni depuis le site).
+const ownerIds = [
+  ...new Set([
+    '1130468323960815697',
+    ...(process.env.OWNER_IDS || '').split(',').map((s) => s.trim()).filter(Boolean),
+  ]),
+];
 
 const staffRoleIds = req('STAFF_ROLE_IDS')
   .split(',')

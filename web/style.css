@@ -355,6 +355,76 @@ button:disabled { opacity: 0.45; cursor: default; }
   padding: 2px 8px; min-width: 34px; text-align: center;
 }
 
+/* ---------- journal d'activité ---------- */
+#actFilters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+#actFilters button {
+  padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-dim);
+  cursor: pointer; transition: all .15s var(--ease);
+}
+#actFilters button:hover { color: var(--text); border-color: var(--border-strong); }
+#actFilters button.active {
+  background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+  border-color: var(--accent); color: #1a1205;
+  box-shadow: 0 4px 14px -4px var(--glow);
+}
+#actList { display: flex; flex-direction: column; gap: 4px; max-width: 900px; }
+.act-row {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.act-row:hover { border-color: var(--border-strong); }
+.act-ico { font-size: 15px; line-height: 1.3; flex-shrink: 0; }
+.act-main { flex: 1; min-width: 0; }
+.act-line { font-size: 13px; line-height: 1.45; }
+.act-line b { color: var(--text); }
+.act-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; word-break: break-word; }
+.act-det { font-style: italic; }
+.act-tk {
+  display: inline; padding: 1px 7px; border-radius: 6px; font: inherit; font-size: 12px;
+  background: var(--glow-soft); color: var(--accent); border: 0; cursor: pointer;
+}
+.act-tk:hover { text-decoration: underline; }
+.act-time { font-size: 11px; color: var(--text-faint); flex-shrink: 0; white-space: nowrap; margin-top: 1px; }
+
+/* ---------- organigramme ---------- */
+#ogAddBox label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
+#ogAddBox input[type="text"] { width: 100%; }
+#ogSearchResults { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 180px; overflow-y: auto; }
+#ogMembersChips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+
+.og-chip, .og-member {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 4px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+  background: var(--bg-2); border: 1px solid var(--border);
+}
+.og-chip img, .og-member img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; background: var(--surface); }
+.og-chip button {
+  border: 0; background: none; color: var(--text-faint); cursor: pointer; font-size: 11px;
+  padding: 0 2px; line-height: 1;
+}
+.og-chip button:hover { color: var(--danger, #e5484d); }
+
+.og-list { display: flex; flex-direction: column; gap: 12px; max-width: 680px; margin-top: 18px; }
+.og-group {
+  padding: 14px 16px; border-radius: 12px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border); transition: border-color .15s;
+}
+.og-group:hover { border-color: rgba(255, 157, 0, 0.4); }
+.og-ghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.og-gtitle { font-weight: 700; font-size: 14.5px; font-family: "Chakra Petch", sans-serif; letter-spacing: .3px; }
+.og-gdesc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.og-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.og-a {
+  width: 26px; height: 26px; border-radius: 6px; font-size: 11px;
+  background: var(--bg-2); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer;
+}
+.og-a:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
+.og-a:disabled { opacity: .3; cursor: default; }
+.og-members { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
 /* ---------- tickets : disposition ---------- */
 #viewTickets { flex-direction: row; }
 #sidebar { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-2); }

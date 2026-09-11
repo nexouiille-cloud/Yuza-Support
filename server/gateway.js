@@ -89,6 +89,12 @@ import {
   listHooks,
   addHook,
   deleteHook,
+  logActivity,
+  listActivity,
+  listOrgChart,
+  upsertOrgGroup,
+  deleteOrgGroup,
+  moveOrgGroup,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -119,6 +125,21 @@ function send(entry, obj) {
 // à tous les staff connectés (infos non sensibles)
 function broadcastAll(obj) {
   for (const c of clients) send(c, obj);
+}
+
+// journal d'activité : enregistre une action et la pousse en direct à toute l'équipe
+function logAct(session, action, userId, detail) {
+  const t = userId ? getTicket(userId) : null;
+  const entry = logActivity(
+    session?.uid || null,
+    session?.name || 'Système',
+    action,
+    userId || null,
+    t?.username || null,
+    detail,
+  );
+  broadcastAll({ type: 'activity', entry });
+  return entry;
 }
 
 // liste des staff en ligne (dédupliquée par utilisateur)
@@ -331,6 +352,8 @@ export function registerGateway(app) {
         theme: effectiveTheme(),
       });
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
+      send(entry, { type: 'activity_list', list: listActivity() });
+      send(entry, { type: 'orgchart', list: listOrgChart() });
       recordLogin(session.uid, session.name, entry.roleName);
       if (entry.isOwner) {
         send(entry, { type: 'logins', list: listFirstSeen(), online: onlineUids() });
@@ -351,6 +374,38 @@ export function registerGateway(app) {
       /* ---- statistiques ---- */
       if (msg.type === 'stats') {
         send(entry, { type: 'stats', stats: getStats(entry.level) });
+        return;
+      }
+
+      /* ---- journal d'activité ---- */
+      if (msg.type === 'get_activity') {
+        send(entry, { type: 'activity_list', list: listActivity() });
+        return;
+      }
+
+      /* ---- organigramme (lecture pour tous, édition owner) ---- */
+      if (msg.type === 'get_orgchart') {
+        send(entry, { type: 'orgchart', list: listOrgChart() });
+        return;
+      }
+      if (msg.type === 'orgchart_save') {
+        if (!entry.isOwner) return;
+        const g = upsertOrgGroup(msg.group || {});
+        if (g) logAct(session, 'orgchart', null, `rang « ${g.title} » (${g.members.length} membre${g.members.length > 1 ? 's' : ''})`);
+        broadcastAll({ type: 'orgchart', list: listOrgChart() });
+        return;
+      }
+      if (msg.type === 'orgchart_delete') {
+        if (!entry.isOwner || !msg.id) return;
+        deleteOrgGroup(msg.id);
+        logAct(session, 'orgchart', null, 'rang supprimé');
+        broadcastAll({ type: 'orgchart', list: listOrgChart() });
+        return;
+      }
+      if (msg.type === 'orgchart_move') {
+        if (!entry.isOwner || !msg.id) return;
+        moveOrgGroup(msg.id, msg.dir);
+        broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }
 
@@ -530,6 +585,13 @@ export function registerGateway(app) {
         updateSettings(patch);
         if (patch.botStatus) applyBotStatus();
         send(entry, { type: 'settings_saved', ok: true });
+        {
+          const keys = Object.keys(patch);
+          if (keys.length) {
+            const nice = { perms: 'permissions', macros: 'macros', theme: 'thème', categories: 'catégories', recruit: 'recrutement', panel: 'panneau support', botStatus: 'statut du bot' };
+            logAct(session, 'settings', null, 'modifié : ' + keys.map((k) => nice[k] || k).join(', '));
+          }
+        }
         if (patch.perms) {
           for (const c of clients) {
             if (!c.ready) continue;
@@ -573,6 +635,7 @@ export function registerGateway(app) {
         try {
           await postAnnouncement(text, session.name);
           send(entry, { type: 'announced', ok: true });
+          logAct(session, 'announce', null, text.slice(0, 140));
         } catch (e) {
           send(entry, { type: 'announced', ok: false, error: String(e?.message || e) });
         }
@@ -604,6 +667,7 @@ export function registerGateway(app) {
         addSanction(targetId, targetName, reason, session.uid, session.name);
         const count = activeSanctionCount(targetId);
         postSanction({ targetId, targetName, reason, byName: session.name, count });
+        logAct(session, 'sanction', null, `${targetName} — ${reason || 'sans motif'} (${count}/3)`);
         // 3 sanctions actives -> on éjecte ses sockets
         if (count >= 3) {
           for (const c of [...clients]) {
@@ -623,6 +687,7 @@ export function registerGateway(app) {
       if (msg.type === 'sanction_del') {
         if (!entry.can.sanctions) return;
         removeSanction(msg.id | 0);
+        logAct(session, 'unsanction', null, 'sanction retirée');
         for (const c of clients) {
           if (c.can?.sanctions) send(c, { type: 'sanctions', list: listSanctions() });
         }
@@ -839,6 +904,7 @@ export function registerGateway(app) {
           const r = await publishReprisePanel(msg.id | 0);
           for (const c of clients) if (c.can?.panels) send(c, { type: 'panels', list: listPanels() });
           send(entry, { type: 'reprise_published', ok: true, ...r });
+          logAct(session, 'panel', null, `panneau « ${listPanels().find((x) => x.id === (msg.id | 0))?.name || msg.id} » publié`);
         } catch (e) {
           send(entry, { type: 'reprise_published', ok: false, error: String(e?.message || e) });
         }
@@ -860,6 +926,7 @@ export function registerGateway(app) {
             linkLabel: String(msg.linkLabel || '').slice(0, 60),
           });
           send(entry, { type: 'shop_result', ok: true });
+          logAct(session, 'shop', null, String(msg.title || 'annonce boutique').slice(0, 140));
         } catch (e) {
           send(entry, { type: 'shop_result', ok: false, error: String(e?.message || e) });
         }
@@ -883,6 +950,7 @@ export function registerGateway(app) {
       if (msg.type === 'recruit_toggle') {
         if (!entry.can.recruit) return;
         setRecruit({ open: !!msg.open });
+        logAct(session, 'recruit', null, msg.open ? 'recrutement staff OUVERT' : 'recrutement staff FERMÉ');
         try {
           const r = await publishRecruit();
           send(entry, { type: 'recruit_state', ...effectiveRecruit(), published: true, ...r });
@@ -1033,6 +1101,7 @@ export function registerGateway(app) {
           preview: content.slice(0, 120),
           fromStaff: true,
         });
+        logAct(session, 'reply', msg.userId, content.slice(0, 140));
         if (assigned) pushTickets();
         return;
       }
@@ -1064,6 +1133,7 @@ export function registerGateway(app) {
           preview,
           fromStaff: true,
         });
+        logAct(session, 'note', msg.userId, content.slice(0, 140));
         return;
       }
 
@@ -1082,6 +1152,7 @@ export function registerGateway(app) {
             : null;
         const prevCat = getTicket(msg.userId)?.category || null;
         setTicketCategory(msg.userId, cat);
+        if (cat !== prevCat) logAct(session, 'category', msg.userId, cat ? `classé « ${cat} »` : 'catégorie retirée');
         pushTickets();
         // notifier le responsable de la catégorie
         if (cat && cat !== prevCat) {
@@ -1153,6 +1224,7 @@ export function registerGateway(app) {
             : `${session.name} a lâché le ticket`,
         );
         broadcastTicket(msg.userId, { type: 'message', message: sys });
+        logAct(session, msg.take ? 'take' : 'release', msg.userId, '');
         pushTickets();
         return;
       }
@@ -1171,6 +1243,7 @@ export function registerGateway(app) {
             : `Titre du ticket réinitialisé par ${session.name}`,
         );
         broadcastTicket(msg.userId, { type: 'message', message: sys });
+        logAct(session, 'rename', msg.userId, title || '(titre effacé)');
         pushTickets();
         return;
       }
@@ -1188,6 +1261,7 @@ export function registerGateway(app) {
           `Priorité passée à « ${labels[msg.priority]} » par ${session.name}`,
         );
         broadcastTicket(msg.userId, { type: 'message', message: sys });
+        logAct(session, 'priority', msg.userId, labels[msg.priority]);
         pushTickets();
         return;
       }
@@ -1218,6 +1292,12 @@ export function registerGateway(app) {
         );
         // le message système part au NOUVEAU niveau
         broadcastTicket(msg.userId, { type: 'message', message: sys });
+        logAct(
+          session,
+          'escalate',
+          msg.userId,
+          `${up ? 'escaladé' : 'redescendu'} niveau ${target} (${levelName(target)})`,
+        );
         pushTickets();
         return;
       }
@@ -1233,6 +1313,7 @@ export function registerGateway(app) {
         }
         setBlacklist(String(msg.userId), !!msg.on);
         broadcastAll({ type: 'blacklist', list: getBlacklist() });
+        logAct(session, 'blacklist', msg.userId, msg.on ? 'ajouté à la blacklist' : 'retiré de la blacklist');
         return;
       }
 
@@ -1255,6 +1336,7 @@ export function registerGateway(app) {
           }
           sendRatingRequest(msg.userId).catch(() => {});
         }
+        logAct(session, msg.type === 'close' ? 'close' : 'reopen', msg.userId, '');
         pushTickets();
         return;
       }
@@ -1262,6 +1344,8 @@ export function registerGateway(app) {
       /* ---- suppression définitive d'un ticket (owner uniquement) ---- */
       if (msg.type === 'delete_ticket') {
         if (!entry.isOwner || !msg.userId) return;
+        const gone = getTicket(msg.userId);
+        logAct(session, 'delete', msg.userId, gone?.username ? `ticket de ${gone.username}` : '');
         deleteTicketHard(msg.userId);
         broadcastAll({ type: 'ticket_gone', userId: msg.userId });
         pushTickets();
