@@ -181,6 +181,9 @@ export function searchMembers(query, limit = 80) {
   }
   return { total: list.length, cached: membersCache.length, members: list.slice(0, limit) };
 }
+export function getMemberAvatar(uid) {
+  return membersCache.find((m) => m.id === String(uid))?.avatar || null;
+}
 
 // Envoi d'un MP à un membre (convocation) + trace dans le salon d'annonce.
 export async function sendConvocation(userId, text, byName) {
@@ -523,6 +526,33 @@ export async function postAnnouncement(text, byName) {
     .setFooter({ text: `Annonce · ${byName || 'staff'}` })
     .setTimestamp(new Date());
   await ch.send({ embeds: [embed] });
+}
+
+// Publie un embed groupé "Changements de grades" (promotions/rétrogradations) dans le salon annonces.
+export async function postRankupChanges({ promotions = [], demotions = [], byName }) {
+  const channelId = effectiveAnnounceChannel();
+  if (!channelId) throw new Error('salon annonces non configuré');
+  const ch = await bot.channels.fetch(channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon annonces introuvable');
+
+  const line = (e) =>
+    `<@${e.discordId}>\n${e.from ? `**${e.from}**` : '*Aucun grade*'} → ${
+      e.retired ? '*Retiré du staff*' : `**${e.to}**`
+    }`;
+
+  let desc = '';
+  if (promotions.length) desc += '**⬆️ Promotions**\n\n' + promotions.map(line).join('\n\n') + '\n\n';
+  if (demotions.length) desc += '**⬇️ Rétrogradations**\n\n' + demotions.map(line).join('\n\n');
+
+  const embed = new EmbedBuilder()
+    .setTitle('📣 Changements de grades')
+    .setDescription(desc.slice(0, 4000))
+    .setColor(0xff9d00)
+    .setFooter({ text: `Par ${byName || 'staff'}` })
+    .setTimestamp(new Date());
+
+  const pingIds = [...promotions, ...demotions].map((e) => e.discordId);
+  await ch.send({ embeds: [embed], allowedMentions: { users: pingIds } });
 }
 
 // Trace une sanction dans le salon sanctions.

@@ -314,7 +314,10 @@
       <!-- ---- Organigramme ---- -->
       <section id="viewOrgchart" class="view">
         <div class="stats-head"><h2>🗂️ Organigramme</h2></div>
-        <p class="muted">Les rangs de l'équipe, du plus haut au plus bas. <span id="ogEditHint" class="hidden">Modifiable par toi (owner) uniquement.</span></p>
+        <p class="muted">
+          Glisse les boîtes où tu veux, relie-les avec « Sous les ordres de » pour tracer une flèche.
+          <span id="ogEditHint" class="hidden">Modifiable par toi uniquement.</span>
+        </p>
 
         <div id="ogAddBox" class="setgrp hidden">
           <h4 id="ogFormTitle">+ Ajouter un rang</h4>
@@ -326,13 +329,18 @@
           <input id="ogSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
           <div id="ogSearchResults"></div>
           <div id="ogMembersChips"></div>
+          <label>Sous les ordres de (trace une flèche, optionnel)</label>
+          <select id="ogParent"><option value="">— Sommet, personne au-dessus —</option></select>
           <div class="mm-actions">
             <button id="ogSaveBtn" class="btn-accent" type="button" disabled>Ajouter le rang</button>
             <button id="ogCancelBtn" class="linkbtn hidden" type="button">Annuler</button>
           </div>
         </div>
 
-        <div id="ogTree"></div>
+        <div id="ogCanvasWrap">
+          <svg id="ogArrows"></svg>
+          <div id="ogCanvas"></div>
+        </div>
       </section>
 
       <!-- ---- Éditeur de bannières (owner) ---- -->
@@ -508,6 +516,16 @@
 ⚡ VoltHorizon RP"></textarea>
             </div>
             <div class="setgrp">
+              <h4>🏆 Classement staff — reset périodique</h4>
+              <p class="muted">Remet à zéro les compteurs « réponses » et satisfaction utilisés par le podium de l'accueil (les tickets et l'historique ne sont jamais touchés).</p>
+              <label class="setline"><input type="checkbox" id="setStatsResetOn" /> Réinitialiser automatiquement</label>
+              <label class="setline">Tous les <input type="text" id="setStatsResetDays" style="max-width:70px" placeholder="7" /> jours</label>
+              <div class="mm-actions">
+                <button id="statsResetNowBtn" type="button">Réinitialiser maintenant</button>
+                <span id="statsResetStatus" class="who"></span>
+              </div>
+            </div>
+            <div class="setgrp">
               <h4>🔐 Qui peut faire quoi (grade minimum)</h4>
               <p class="muted">Chaque action est ouverte à ce grade et à tous ceux au-dessus. « Owner » = toi seul. Tu es owner, tu as tout de toute façon.</p>
               <label class="setline">📢 Annonces <select id="permAnnounce"></select></label>
@@ -518,6 +536,7 @@
               <label class="setline">📋 Panneaux Reprise <select id="permPanels"></select></label>
               <label class="setline">🔗 Webhooks entrants <select id="permWebhooks"></select></label>
               <label class="setline">🗂️ Organigramme (modifier) <select id="permOrgchart"></select></label>
+              <label class="setline">🎖️ Changements de grades <select id="permRankup"></select></label>
             </div>
             <div class="setgrp">
               <h4>⚡ Macros (réponses pré-écrites)</h4>
@@ -586,6 +605,29 @@
           <div class="mm-actions">
             <button id="annSend" class="btn-accent" type="button">Publier l'annonce</button>
             <span id="annStatus" class="who"></span>
+          </div>
+        </div>
+
+        <div class="setgrp" id="modRankup">
+          <h4>🎖️ Changements de grades</h4>
+          <p class="muted">Ajoute chaque changement à la liste, puis publie un seul embed groupé dans le salon annonces.</p>
+          <label>Membre</label>
+          <input id="rkSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
+          <div id="rkSearchResults"></div>
+          <div id="rkPicked" class="hidden"></div>
+          <div class="be-row">
+            <div><label>Ancien grade</label><input id="rkFrom" type="text" placeholder="ex : Modération" maxlength="60" /></div>
+            <div><label>Nouveau grade</label><input id="rkTo" type="text" placeholder="ex : Admin" maxlength="60" /></div>
+          </div>
+          <label class="setline"><input type="checkbox" id="rkRetired" /> Retiré du staff (pas de nouveau grade)</label>
+          <div class="mm-actions">
+            <button id="rkAddPromo" type="button" disabled>⬆️ Ajouter en promotion</button>
+            <button id="rkAddDemo" type="button" disabled>⬇️ Ajouter en rétrogradation</button>
+          </div>
+          <div id="rkPending"></div>
+          <div class="mm-actions">
+            <button id="rkPublish" class="btn-accent" type="button" disabled>📣 Publier les changements</button>
+            <span id="rkStatus" class="who"></span>
           </div>
         </div>
 

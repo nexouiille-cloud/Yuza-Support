@@ -354,6 +354,37 @@ button:disabled { opacity: 0.45; cursor: default; }
   color: var(--accent); background: var(--glow-soft); border-radius: 6px;
   padding: 2px 8px; min-width: 34px; text-align: center;
 }
+.ht-av {
+  position: relative; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.ht-av img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ht-av-fb { position: relative; z-index: -1; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+
+.ht-podium { display: flex; align-items: flex-end; justify-content: center; gap: 14px; margin-bottom: 10px; }
+.ht-p {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 14px 10px 12px; border-radius: 12px; width: 108px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  transition: border-color .18s, transform .18s;
+}
+.ht-p:hover { border-color: rgba(255, 157, 0, 0.4); transform: translateY(-2px); }
+.ht-p.me { border-color: rgba(255, 157, 0, 0.55); box-shadow: 0 0 0 1px rgba(255, 157, 0, 0.25) inset; }
+.ht-p1 { padding-top: 18px; order: 2; }
+.ht-p1 .ht-av { box-shadow: 0 0 0 3px var(--accent), 0 0 18px -2px var(--glow); }
+.ht-p2 { order: 1; }
+.ht-p3 { order: 3; }
+.ht-medal { font-size: 20px; line-height: 1; }
+.ht-pname {
+  font-weight: 700; font-size: 12.5px; max-width: 96px; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ht-prating { font-size: 11px; color: var(--text-dim); }
+.ht-pn {
+  font-family: "Chakra Petch", sans-serif; font-size: 13px; color: var(--accent);
+  background: var(--glow-soft); border-radius: 6px; padding: 2px 10px; margin-top: 2px;
+}
 
 /* ---------- journal d'activité ---------- */
 #actFilters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
@@ -389,10 +420,17 @@ button:disabled { opacity: 0.45; cursor: default; }
 .act-time { font-size: 11px; color: var(--text-faint); flex-shrink: 0; white-space: nowrap; margin-top: 1px; }
 
 /* ---------- organigramme ---------- */
-#ogAddBox label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
-#ogAddBox input[type="text"] { width: 100%; }
-#ogSearchResults { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 180px; overflow-y: auto; }
+#ogAddBox label, #modRankup label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 4px; }
+#ogAddBox input[type="text"], #modRankup input[type="text"] { width: 100%; }
+#ogSearchResults, #rkSearchResults { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; max-height: 180px; overflow-y: auto; }
 #ogMembersChips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#rkPicked {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; width: fit-content;
+}
+#rkPicked img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+#rkPending { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; max-width: 620px; }
+#rkPending .hook-row b { color: var(--accent-bright); }
 
 .og-chip, .og-member {
   display: inline-flex; align-items: center; gap: 6px;
@@ -406,25 +444,39 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 .og-chip button:hover { color: var(--danger, #e5484d); }
 
-.og-list { display: flex; flex-direction: column; gap: 12px; max-width: 680px; margin-top: 18px; }
-.og-group {
-  padding: 14px 16px; border-radius: 12px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  border: 1px solid var(--border); transition: border-color .15s;
-}
-.og-group:hover { border-color: rgba(255, 157, 0, 0.4); }
-.og-ghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.og-gtitle { font-weight: 700; font-size: 14.5px; font-family: "Chakra Petch", sans-serif; letter-spacing: .3px; }
-.og-gdesc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.og-ghead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.og-gtitle { font-weight: 700; font-size: 13.5px; font-family: "Chakra Petch", sans-serif; letter-spacing: .3px; }
+.og-gdesc { font-size: 11px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
 .og-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .og-a {
-  width: 26px; height: 26px; border-radius: 6px; font-size: 12px; line-height: 1;
+  width: 24px; height: 24px; border-radius: 6px; font-size: 11px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
   background: var(--bg-2); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer;
 }
 .og-a:hover:not(:disabled) { color: var(--text); border-color: var(--border-strong); }
 .og-a:disabled { opacity: .3; cursor: default; }
-.og-members { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.og-members { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+
+/* ---------- organigramme : canvas libre (glisser-déposer + flèches) ---------- */
+#ogCanvasWrap {
+  position: relative; overflow: auto; margin-top: 18px;
+  border: 1px solid var(--border); border-radius: 14px;
+  background-color: var(--bg-2);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 22px 22px;
+  height: 62vh; min-height: 420px; max-width: 100%;
+}
+#ogArrows { position: absolute; left: 0; top: 0; pointer-events: none; }
+#ogCanvas { position: relative; }
+.og-box {
+  position: absolute; width: 220px; padding: 12px 12px 10px;
+  border-radius: 12px; background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  transition: border-color .15s, box-shadow .15s;
+  user-select: none; touch-action: none;
+}
+.og-box:hover { border-color: rgba(255, 157, 0, 0.4); }
+.og-box.dragging { border-color: var(--accent); box-shadow: 0 14px 34px -10px var(--glow), var(--shadow); z-index: 5; }
 
 /* ---------- tickets : disposition ---------- */
 #viewTickets { flex-direction: row; }
@@ -776,6 +828,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .sdot.st-idle,   .who-chip.st-idle::before   { background: #ffa93d; box-shadow: 0 0 6px 1px rgba(255,169,61,.5); }
 .sdot.st-busy,   .who-chip.st-busy::before   { background: var(--danger); box-shadow: 0 0 6px 1px rgba(255,95,95,.5); }
 .sdot.st-away,   .who-chip.st-away::before   { background: var(--text-faint); box-shadow: none; }
+.sdot.st-offline { background: #4a4650; box-shadow: none; }
+.staff-item.offline { opacity: .55; }
 .staff-item .sname { display: flex; align-items: center; gap: 8px; }
 .staff-item .sst { font-size: 11px; color: var(--text-faint); text-transform: lowercase; }
 #presence .who-chip .wc-role { color: var(--text-faint); font-size: 11px; border-left: 1px solid var(--border-strong); padding-left: 6px; }

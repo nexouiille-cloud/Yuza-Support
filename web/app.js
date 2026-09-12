@@ -243,7 +243,10 @@ function showView(name) {
     b.classList.toggle('active', b.dataset.view === name),
   );
   if (name === 'home') renderHome();
-  if (name === 'staff') renderStaffView();
+  if (name === 'staff') {
+    renderStaffView();
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_team' }));
+  }
   if (name === 'stats' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'stats' }));
   if (name === 'settings' && ws && ws.readyState === 1) {
@@ -261,6 +264,7 @@ function showView(name) {
     $('#modShop').classList.toggle('hidden', !perms.shop);
     $('#modRecruit').classList.toggle('hidden', !perms.recruit);
     $('#modHooks').classList.toggle('hidden', !perms.webhooks);
+    $('#modRankup').classList.toggle('hidden', !perms.rankup);
     if (ws && ws.readyState === 1) {
       if (perms.sanctions) ws.send(JSON.stringify({ type: 'get_sanctions' }));
       if (perms.panels) ws.send(JSON.stringify({ type: 'get_panels' }));
@@ -288,7 +292,7 @@ function showView(name) {
 
 /* ---------------- permissions : affichage des onglets ---------------- */
 function applyPermsUI() {
-  const anyMod = ['announce', 'recruit', 'sanctions', 'shop', 'webhooks', 'panels'].some((k) => perms[k]);
+  const anyMod = ['announce', 'recruit', 'sanctions', 'shop', 'webhooks', 'panels', 'rankup'].some((k) => perms[k]);
   $('#modNav').classList.toggle('hidden', !anyMod);
   $('#bannersNav').classList.toggle('hidden', !perms.banners);
   const cm = $('#cMacros');
@@ -552,6 +556,7 @@ $('#dmSend').addEventListener('click', () => {
 });
 
 const ST_LABEL = { online: 'présent', busy: 'occupé', away: 'absent', idle: 'inactif' };
+let teamRoster = []; // tout le monde ayant déjà ouvert le site (listFirstSeen), pour compléter la présence live
 function statusOf(s) {
   return ['online', 'busy', 'away', 'idle'].includes(s?.status) ? s.status : 'online';
 }
@@ -559,19 +564,37 @@ function renderStaffView() {
   const box = $('#staffList');
   if (!box) return;
   $('#staffCount').textContent = presence.length + ' en ligne';
-  if (!presence.length) {
-    box.innerHTML = '<div class="muted">Personne d\'autre n\'est connecté.</div>';
+  // fusionne la présence live avec tout le monde qui s'est déjà connecté (offline = gris)
+  const byUid = new Map();
+  presence.forEach((s) => byUid.set(String(s.uid), { online: true, ...s }));
+  teamRoster.forEach((r) => {
+    const uid = String(r.uid);
+    if (!byUid.has(uid)) byUid.set(uid, { online: false, uid, name: r.name, roleName: r.roleName, lastAt: r.lastAt });
+  });
+  const list = [...byUid.values()].sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">Personne ne s\'est encore connecté.</div>';
     return;
   }
-  box.innerHTML = presence
+  box.innerHTML = list
     .map((s) => {
-      const st = statusOf(s);
-      const role = s.roleName || levelName(s.level);
+      if (s.online) {
+        const st = statusOf(s);
+        return (
+          `<div class="staff-item"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
+          `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}` +
+          `<span class="sst">${ST_LABEL[st]}</span></span>` +
+          `<span class="srole">${esc(s.roleName || levelName(s.level))}</span></div>`
+        );
+      }
       return (
-        `<div class="staff-item"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
-        `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}` +
-        `<span class="sst">${ST_LABEL[st]}</span></span>` +
-        `<span class="srole">${esc(role)}</span></div>`
+        `<div class="staff-item offline"><span class="sdot st-offline" title="Pas là"></span>` +
+        `<span class="sname">${esc(s.name)}` +
+        `<span class="sst">pas là${s.lastAt ? ' · vu ' + ago(s.lastAt) : ''}</span></span>` +
+        `<span class="srole">${esc(s.roleName || '')}</span></div>`
       );
     })
     .join('');
@@ -632,8 +655,19 @@ function renderHome() {
   renderHomeTop();
 }
 
-/* ---------------- classement staff sur l'accueil ---------------- */
+/* ---------------- classement staff sur l'accueil (podium + avatars) ---------------- */
 const MEDALS = ['🥇', '🥈', '🥉'];
+function staffAvatarHtml(name, size) {
+  const avatar = teamRoster.find((r) => r.name === name)?.avatar;
+  const letter = esc((name || '?').trim().charAt(0).toUpperCase() || '?');
+  const bg = idColor(name);
+  const img = avatar ? `<img src="${esc(avatar)}" alt="" onerror="this.remove()" />` : '';
+  return (
+    `<span class="ht-av" style="background:${bg};width:${size}px;height:${size}px">` +
+    img +
+    `<span class="ht-av-fb" style="font-size:${Math.round(size * 0.4)}px">${letter}</span></span>`
+  );
+}
 function renderHomeTop() {
   const box = $('#homeTop');
   if (!box || !lastStats) return;
@@ -641,23 +675,44 @@ function renderHomeTop() {
   if (!byStaff.length) { box.classList.add('hidden'); return; }
   const ratings = lastStats.ratingByStaff || {};
   box.classList.remove('hidden');
+  const top3 = byStaff.slice(0, 3);
+  const rest = byStaff.slice(3);
+  const since = lastStats.statsSince ? `depuis ${ago(lastStats.statsSince)}` : 'depuis toujours';
+  const podiumHtml = [1, 0, 2] // 2e à gauche, 1er au milieu, 3e à droite
+    .filter((i) => top3[i])
+    .map((i) => {
+      const [name, n] = top3[i];
+      const r = ratings[name];
+      const rank = i + 1;
+      return (
+        `<div class="ht-p ht-p${rank}${name === myName ? ' me' : ''}">` +
+        `<span class="ht-medal">${MEDALS[i]}</span>` +
+        staffAvatarHtml(name, rank === 1 ? 64 : 50) +
+        `<span class="ht-pname">${esc(name)}</span>` +
+        (r ? `<span class="ht-prating">⭐ ${r.avg}</span>` : '') +
+        `<span class="ht-pn">${n}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  const restHtml = rest
+    .map(([name, n], j) => {
+      const r = ratings[name];
+      return (
+        `<div class="ht-row${name === myName ? ' me' : ''}">` +
+        `<span class="ht-rank">${j + 4}.</span>` +
+        staffAvatarHtml(name, 26) +
+        `<span class="ht-name">${esc(name)}</span>` +
+        (r ? `<span class="ht-rating">⭐ ${r.avg}</span>` : '') +
+        `<span class="ht-n">${n}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
   box.innerHTML =
-    `<div class="ht-head"><span>🏆 Top équipe</span><span class="muted">réponses (total)</span></div>` +
-    `<div class="ht-list">` +
-    byStaff
-      .map(([name, n], i) => {
-        const r = ratings[name];
-        return (
-          `<div class="ht-row${name === myName ? ' me' : ''}">` +
-          `<span class="ht-rank">${MEDALS[i] || i + 1 + '.'}</span>` +
-          `<span class="ht-name">${esc(name)}</span>` +
-          (r ? `<span class="ht-rating">⭐ ${r.avg}</span>` : '') +
-          `<span class="ht-n">${n}</span>` +
-          `</div>`
-        );
-      })
-      .join('') +
-    `</div>`;
+    `<div class="ht-head"><span>🏆 Top équipe</span><span class="muted">réponses · ${since}</span></div>` +
+    `<div class="ht-podium">${podiumHtml}</div>` +
+    (restHtml ? `<div class="ht-list">${restHtml}</div>` : '');
 }
 
 /* ---------------- présence staff ---------------- */
@@ -930,12 +985,21 @@ function handle(m) {
         const sec = h && document.getElementById('view' + h.charAt(0).toUpperCase() + h.slice(1));
         showView(sec ? h : 'home');
       } else syncHeader();
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
+        ws.send(JSON.stringify({ type: 'get_team' })); // avatars pour le podium
+      }
       break;
 
     case 'presence':
       presence = Array.isArray(m.staff) ? m.staff : [];
       renderPresence();
+      if ($('#viewStaff').classList.contains('active')) renderStaffView();
+      break;
+
+    case 'team':
+      teamRoster = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewStaff').classList.contains('active')) renderStaffView();
       break;
 
     case 'member':
@@ -946,6 +1010,16 @@ function handle(m) {
       renderMembersView(m);
       renderConvResults(m);
       renderOgResults(m);
+      renderRkResults(m);
+      break;
+
+    case 'rankup_result':
+      $('#rkStatus').textContent = m.ok ? 'publié ✓' : `échec (${m.error || '?'})`;
+      $('#rkPublish').disabled = false;
+      if (m.ok) {
+        rkPending = [];
+        renderRkPending();
+      }
       break;
 
     case 'suggestions':
@@ -1450,6 +1524,18 @@ function updateOgSaveState() {
 }
 $('#ogTitle').addEventListener('input', updateOgSaveState);
 
+function fillOgParentSelect(excludeId) {
+  const sel = $('#ogParent');
+  const cur = sel.value;
+  sel.innerHTML =
+    '<option value="">— Sommet, personne au-dessus —</option>' +
+    orgChart
+      .filter((n) => n.id !== excludeId)
+      .map((n) => `<option value="${n.id}">${esc(n.title)}</option>`)
+      .join('');
+  sel.value = cur;
+}
+
 function resetOgForm() {
   ogEditId = null;
   ogMembers = [];
@@ -1458,6 +1544,7 @@ function resetOgForm() {
   $('#ogMembersChips').innerHTML = '';
   $('#ogTitle').value = '';
   $('#ogDesc').value = '';
+  $('#ogParent').value = '';
   $('#ogFormTitle').textContent = '+ Ajouter un rang';
   $('#ogSaveBtn').textContent = 'Ajouter le rang';
   $('#ogCancelBtn').classList.add('hidden');
@@ -1475,6 +1562,7 @@ $('#ogSaveBtn').addEventListener('click', () => {
         title,
         description: $('#ogDesc').value.trim(),
         members: ogMembers,
+        parentId: $('#ogParent').value || null,
       },
     }),
   );
@@ -1490,6 +1578,8 @@ function ogEditGroup(g) {
   renderOgChips();
   $('#ogTitle').value = g.title || '';
   $('#ogDesc').value = g.description || '';
+  fillOgParentSelect(g.id);
+  $('#ogParent').value = g.parentId || '';
   $('#ogFormTitle').textContent = `✏️ Modifier « ${g.title} »`;
   $('#ogSaveBtn').textContent = 'Enregistrer les modifications';
   $('#ogCancelBtn').classList.remove('hidden');
@@ -1502,24 +1592,28 @@ function ogDeleteGroup(id, title) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_delete', id }));
 }
 
-function ogMoveGroup(id, dir) {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_move', id, dir }));
+/* --- canvas : positions par défaut (grille) pour les boîtes jamais déplacées --- */
+const OG_BOX_W = 220;
+function ogFallbackPos(i) {
+  const col = i % 3;
+  const row = Math.floor(i / 3);
+  return { x: 40 + col * 260, y: 40 + row * 170 };
+}
+function ogPos(g, i) {
+  return Number.isFinite(g.x) && Number.isFinite(g.y) ? { x: g.x, y: g.y } : ogFallbackPos(i);
 }
 
-function ogGroupHtml(g, idx, total, isOwner) {
+function ogBoxHtml(g, pos, isOwner) {
   const actions = isOwner
     ? `<div class="og-actions">` +
-      `<button class="og-a" data-og-up="${g.id}" ${idx === 0 ? 'disabled' : ''} title="Monter">▲</button>` +
-      `<button class="og-a" data-og-down="${g.id}" ${idx === total - 1 ? 'disabled' : ''} title="Descendre">▼</button>` +
       `<button class="og-a" data-og-edit="${g.id}" title="Modifier">✏️</button>` +
       `<button class="og-a" data-og-del="${g.id}" title="Supprimer">🗑️</button>` +
       `</div>`
     : '';
   return (
-    `<div class="og-group">` +
-    `<div class="og-ghead"><div><div class="og-gtitle">${esc(g.title)}</div>` +
+    `<div class="og-box" data-id="${g.id}" style="left:${pos.x}px;top:${pos.y}px${isOwner ? ';cursor:grab' : ''}">` +
+    `<div class="og-ghead"><div class="og-gtitle">${esc(g.title)}</div>${actions}</div>` +
     (g.description ? `<div class="og-gdesc">${esc(g.description)}</div>` : '') +
-    `</div>${actions}</div>` +
     `<div class="og-members">` +
     g.members
       .map(
@@ -1532,39 +1626,210 @@ function ogGroupHtml(g, idx, total, isOwner) {
   );
 }
 
+function ogDrawArrows(posById) {
+  const svg = $('#ogArrows');
+  let inner =
+    '<defs><marker id="ogArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+    '<path d="M0 0L10 5L0 10z" fill="var(--border-strong)"/></marker></defs>';
+  orgChart.forEach((g) => {
+    if (!g.parentId || !posById.has(g.parentId) || !posById.has(g.id)) return;
+    const p = posById.get(g.parentId);
+    const c = posById.get(g.id);
+    const x1 = p.x + OG_BOX_W / 2;
+    const y1 = p.y + p.h;
+    const x2 = c.x + OG_BOX_W / 2;
+    const y2 = c.y;
+    const midY = (y1 + y2) / 2;
+    inner += `<path d="M${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" stroke="var(--border-strong)" stroke-width="2" fill="none" marker-end="url(#ogArrow)"/>`;
+  });
+  svg.innerHTML = inner;
+}
+
+let ogDrag = null; // { id, startX, startY, boxStartX, boxStartY }
+
+function ogAttachDrag(el, g) {
+  el.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.og-a')) return; // pas sur les boutons ✏️🗑️
+    el.setPointerCapture(e.pointerId);
+    ogDrag = { id: g.id, startX: e.clientX, startY: e.clientY, boxStartX: parseFloat(el.style.left), boxStartY: parseFloat(el.style.top) };
+    el.style.cursor = 'grabbing';
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!ogDrag || ogDrag.id !== g.id) return;
+    const nx = Math.max(0, ogDrag.boxStartX + (e.clientX - ogDrag.startX));
+    const ny = Math.max(0, ogDrag.boxStartY + (e.clientY - ogDrag.startY));
+    el.style.left = nx + 'px';
+    el.style.top = ny + 'px';
+    ogRedrawArrowsLive();
+  });
+  const end = (e) => {
+    if (!ogDrag || ogDrag.id !== g.id) return;
+    const nx = Math.max(0, parseFloat(el.style.left));
+    const ny = Math.max(0, parseFloat(el.style.top));
+    ogDrag = null;
+    el.style.cursor = 'grab';
+    el.classList.remove('dragging');
+    g.x = nx;
+    g.y = ny;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_pos', id: g.id, x: nx, y: ny }));
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+
+function ogRedrawArrowsLive() {
+  const posById = new Map();
+  $('#ogCanvas').querySelectorAll('.og-box').forEach((el) => {
+    posById.set(Number(el.dataset.id), { x: parseFloat(el.style.left), y: parseFloat(el.style.top), h: el.offsetHeight });
+  });
+  ogDrawArrows(posById);
+}
+
 function renderOrgChart() {
-  const box = $('#ogTree');
+  const canvas = $('#ogCanvas');
   const isOwner = !!perms.orgchart;
+  fillOgParentSelect(ogEditId);
   if (!orgChart.length) {
-    box.innerHTML = isOwner
-      ? "<p class=\"muted\">Vide pour l'instant — ajoute le premier rang ci-dessus.</p>"
-      : "<p class=\"muted\">Pas encore d'organigramme.</p>";
+    canvas.innerHTML = isOwner
+      ? "<p class=\"muted\" style=\"position:absolute;left:20px;top:16px\">Vide pour l'instant — ajoute le premier rang ci-dessus.</p>"
+      : "<p class=\"muted\" style=\"position:absolute;left:20px;top:16px\">Pas encore d'organigramme.</p>";
+    $('#ogArrows').innerHTML = '';
     return;
   }
-  box.innerHTML =
-    `<div class="og-list">` +
-    orgChart.map((g, i) => ogGroupHtml(g, i, orgChart.length, isOwner)).join('') +
-    `</div>`;
-  if (!isOwner) return;
-  box.querySelectorAll('[data-og-edit]').forEach((b) =>
+  const positions = orgChart.map((g, i) => ogPos(g, i));
+  canvas.innerHTML = orgChart.map((g, i) => ogBoxHtml(g, positions[i], isOwner)).join('');
+  canvas.querySelectorAll('.og-box').forEach((el) => {
+    const g = orgChart.find((x) => x.id === Number(el.dataset.id));
+    if (!g) return;
+    if (isOwner) ogAttachDrag(el, g);
+    el.querySelector('[data-og-edit]')?.addEventListener('click', () => ogEditGroup(g));
+    el.querySelector('[data-og-del]')?.addEventListener('click', () => ogDeleteGroup(g.id, g.title));
+  });
+  // taille du canvas = englobe toutes les boîtes + marge, pour que le scroll fonctionne
+  let maxX = 900, maxY = 600;
+  canvas.querySelectorAll('.og-box').forEach((el) => {
+    maxX = Math.max(maxX, parseFloat(el.style.left) + OG_BOX_W + 60);
+    maxY = Math.max(maxY, parseFloat(el.style.top) + el.offsetHeight + 60);
+  });
+  canvas.style.width = maxX + 'px';
+  canvas.style.height = maxY + 'px';
+  $('#ogArrows').style.width = maxX + 'px';
+  $('#ogArrows').style.height = maxY + 'px';
+  $('#ogArrows').setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+  ogRedrawArrowsLive();
+}
+
+/* ---------------- changements de grades (rank up / rétrogradation) ---------------- */
+let rkPicked = null;
+let rkPending = []; // [{discordId,name,avatarUrl,from,to,retired,kind:'promo'|'demo'}]
+
+let rkSearchTimer = null;
+$('#rkSearch').addEventListener('input', (e) => {
+  clearTimeout(rkSearchTimer);
+  const q = e.target.value.trim();
+  rkSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+
+function renderRkResults(m) {
+  if (!$('#viewMod').classList.contains('active') || $('#modRankup').classList.contains('hidden')) return;
+  const box = $('#rkSearchResults');
+  const q = $('#rkSearch').value.trim();
+  if (!m.members || !m.members.length || !q) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = m.members
+    .slice(0, 20)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}" data-avatar="${esc(mem.avatar || '')}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
     b.addEventListener('click', () => {
-      const g = orgChart.find((x) => x.id === Number(b.dataset.ogEdit));
-      if (g) ogEditGroup(g);
+      rkPicked = { discordId: b.dataset.id, name: b.dataset.name, avatarUrl: b.dataset.avatar };
+      $('#rkSearchResults').innerHTML = '';
+      $('#rkSearch').value = '';
+      const p = $('#rkPicked');
+      p.classList.remove('hidden');
+      p.innerHTML = `<img src="${esc(rkPicked.avatarUrl)}" alt="" /><span>${esc(rkPicked.name)}</span>`;
+      updateRkAddState();
     }),
-  );
-  box.querySelectorAll('[data-og-del]').forEach((b) =>
-    b.addEventListener('click', () => {
-      const g = orgChart.find((x) => x.id === Number(b.dataset.ogDel));
-      if (g) ogDeleteGroup(g.id, g.title);
-    }),
-  );
-  box.querySelectorAll('[data-og-up]').forEach((b) =>
-    b.addEventListener('click', () => ogMoveGroup(Number(b.dataset.ogUp), -1)),
-  );
-  box.querySelectorAll('[data-og-down]').forEach((b) =>
-    b.addEventListener('click', () => ogMoveGroup(Number(b.dataset.ogDown), 1)),
   );
 }
+
+function updateRkAddState() {
+  const retired = $('#rkRetired').checked;
+  const to = $('#rkTo').value.trim();
+  const ok = !!rkPicked && (retired || to);
+  $('#rkAddPromo').disabled = !ok || retired; // une promo doit avoir un nouveau grade
+  $('#rkAddDemo').disabled = !ok;
+}
+$('#rkTo').addEventListener('input', updateRkAddState);
+$('#rkRetired').addEventListener('change', () => {
+  $('#rkTo').disabled = $('#rkRetired').checked;
+  updateRkAddState();
+});
+
+function rkAddEntry(kind) {
+  if (!rkPicked) return;
+  rkPending.push({
+    ...rkPicked,
+    from: $('#rkFrom').value.trim(),
+    to: $('#rkTo').value.trim(),
+    retired: $('#rkRetired').checked,
+    kind,
+  });
+  rkPicked = null;
+  $('#rkPicked').classList.add('hidden');
+  $('#rkPicked').innerHTML = '';
+  $('#rkFrom').value = '';
+  $('#rkTo').value = '';
+  $('#rkRetired').checked = false;
+  $('#rkTo').disabled = false;
+  updateRkAddState();
+  renderRkPending();
+}
+$('#rkAddPromo').addEventListener('click', () => rkAddEntry('promo'));
+$('#rkAddDemo').addEventListener('click', () => rkAddEntry('demo'));
+
+function renderRkPending() {
+  const box = $('#rkPending');
+  box.innerHTML = rkPending
+    .map(
+      (e, i) =>
+        `<div class="hook-row"><div>` +
+        `<b>${e.kind === 'promo' ? '⬆️ Promotion' : '⬇️ Rétrogradation'}</b> — ${esc(e.name)}<br/>` +
+        `<span class="muted">${esc(e.from || '—')} → ${e.retired ? 'Retiré du staff' : esc(e.to)}</span>` +
+        `</div><button type="button" data-rk-rm="${i}">✕</button></div>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-rk-rm]').forEach((b) =>
+    b.addEventListener('click', () => {
+      rkPending.splice(Number(b.dataset.rkRm), 1);
+      renderRkPending();
+      $('#rkPublish').disabled = !rkPending.length;
+    }),
+  );
+  $('#rkPublish').disabled = !rkPending.length;
+}
+
+$('#rkPublish').addEventListener('click', () => {
+  if (!rkPending.length || !ws || ws.readyState !== 1) return;
+  $('#rkPublish').disabled = true;
+  $('#rkStatus').textContent = 'publication…';
+  ws.send(
+    JSON.stringify({
+      type: 'rankup_post',
+      promotions: rkPending.filter((e) => e.kind === 'promo'),
+      demotions: rkPending.filter((e) => e.kind === 'demo'),
+    }),
+  );
+});
 
 /* ---------------- stats ---------------- */
 function fmtDur(ms) {
@@ -2060,6 +2325,10 @@ function fillSettings(s, scope) {
   $('#setShopChan').value = s.shopChannelId || '';
   $('#setBotText').value = (s.botStatus && s.botStatus.text) || '';
   $('#setBotType').value = (s.botStatus && s.botStatus.type) || 'custom';
+  const sr = s.statsReset || {};
+  $('#setStatsResetOn').checked = !!sr.enabled;
+  $('#setStatsResetDays').value = sr.days || 7;
+  $('#statsResetStatus').textContent = sr.lastReset ? 'dernier reset : ' + ago(sr.lastReset) : 'jamais réinitialisé';
   renderCatRoles(s.categoryRoles || []);
   fillPermSelects(s.perms || {});
   renderSetMacros(s.macros || []);
@@ -2069,7 +2338,7 @@ function fillSettings(s, scope) {
 const PERM_FIELDS = {
   permAnnounce: 'announce', permRecruit: 'recruit', permBanners: 'banners',
   permSanctions: 'sanctions', permShop: 'shop', permPanels: 'panels', permWebhooks: 'webhooks',
-  permOrgchart: 'orgchart',
+  permOrgchart: 'orgchart', permRankup: 'rankup',
 };
 function permOptions(cur) {
   let html = '';
@@ -2216,6 +2485,7 @@ $('#setSave').addEventListener('click', () => {
         convoChannelId: $('#setConvoChan').value.trim(),
         shopChannelId: $('#setShopChan').value.trim(),
         botStatus: { text: $('#setBotText').value, type: $('#setBotType').value },
+        statsReset: { enabled: $('#setStatsResetOn').checked, days: Number($('#setStatsResetDays').value) || 7 },
         categoryRoles: gatherCatRoles(),
         perms: gatherPerms(),
         macros: gatherMacros(),
@@ -2231,6 +2501,12 @@ $('#setSave').addEventListener('click', () => {
 });
 $('#setReload').addEventListener('click', () => {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
+});
+$('#statsResetNowBtn').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  if (!confirm("Remettre à zéro le classement staff (réponses + satisfaction) maintenant ?")) return;
+  ws.send(JSON.stringify({ type: 'reset_stats_now' }));
+  $('#statsResetStatus').textContent = 'réinitialisé à l\'instant';
 });
 $('#obReview').addEventListener('click', () => showOnboarding(true));
 $('#backupBtn').addEventListener('click', () => {

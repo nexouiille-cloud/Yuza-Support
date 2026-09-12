@@ -79,10 +79,12 @@ export function listActivity(limit = 300) {
 }
 
 /* ---------------- organigramme ---------------- */
-// Liste ordonnée de RANGS (comme les paliers du serveur Discord) : chaque rang a
-// un titre, une description libre, et une liste de membres Discord (avatar en cache).
-// Plusieurs personnes peuvent partager le même rang (ex : 3 fondateurs). Éditable
-// par l'owner uniquement, visible par toute l'équipe.
+// Vrai organigramme en canvas libre : chaque rang est une boîte {x,y} déplaçable
+// à la souris, avec un titre, une description libre, une liste de membres Discord
+// (avatar en cache), et un parentId optionnel qui trace une flèche vers la boîte
+// du dessus. Éditable selon la permission "orgchart", visible par toute l'équipe.
+// x/y absents (données créées avant le canvas) => le client calcule une position
+// de secours ; dès qu'on déplace la boîte, x/y sont sauvegardés pour de bon.
 export function listOrgChart() {
   return data.orgChart.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
@@ -104,37 +106,49 @@ export function upsertOrgGroup(group) {
     title: String(group.title || '').slice(0, 60),
     description: String(group.description || '').slice(0, 300),
     members: cleanOrgMembers(group.members),
+    parentId: group.parentId ? Number(group.parentId) : null,
   };
   if (!clean.title) return null;
   if (group.id) {
     const g = data.orgChart.find((x) => x.id === Number(group.id));
     if (!g) return null;
+    if (clean.parentId === g.id) clean.parentId = g.parentId || null; // pas son propre parent
     Object.assign(g, clean);
     save();
     return g;
   }
   const maxOrder = Math.max(0, ...data.orgChart.map((x) => x.order ?? 0));
-  const g = { id: ++data.seq, ...clean, order: maxOrder + 1 };
+  const g = {
+    id: ++data.seq,
+    ...clean,
+    order: maxOrder + 1,
+    x: Number.isFinite(group.x) ? group.x : null,
+    y: Number.isFinite(group.y) ? group.y : null,
+  };
   data.orgChart.push(g);
+  save();
+  return g;
+}
+
+export function setOrgGroupPos(id, x, y) {
+  id = Number(id);
+  const g = data.orgChart.find((n) => n.id === id);
+  if (!g || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  g.x = Math.round(x);
+  g.y = Math.round(y);
   save();
   return g;
 }
 
 export function deleteOrgGroup(id) {
   id = Number(id);
+  const g = data.orgChart.find((x) => x.id === id);
+  if (!g) return;
+  // les boîtes qui pointaient vers celle-ci remontent à son propre parent (flèche pas cassée)
+  data.orgChart.forEach((x) => {
+    if (x.parentId === id) x.parentId = g.parentId || null;
+  });
   data.orgChart = data.orgChart.filter((x) => x.id !== id);
-  save();
-}
-
-export function moveOrgGroup(id, dir) {
-  id = Number(id);
-  const list = data.orgChart.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const idx = list.findIndex((x) => x.id === id);
-  const swapIdx = idx + (dir < 0 ? -1 : 1);
-  if (idx < 0 || swapIdx < 0 || swapIdx >= list.length) return;
-  const tmp = list[idx].order ?? 0;
-  list[idx].order = list[swapIdx].order ?? 0;
-  list[swapIdx].order = tmp;
   save();
 }
 
@@ -357,15 +371,44 @@ export function getSettings() {
     botStatus: effectiveBotStatus(),
     perms: effectivePerms(),
     macros: effectiveMacros(),
+    statsReset: effectiveStatsReset(),
   };
 }
 
+/* ---------------- reset périodique des stats "compétitives" ---------------- */
+// Ne touche pas aux tickets/données réelles : décale juste la fenêtre de comptage
+// (réponses par staff + satisfaction) utilisée par le classement / podium d'accueil.
+export function effectiveStatsReset() {
+  const s = data.settings.statsReset || {};
+  return {
+    enabled: !!s.enabled,
+    days: Number.isFinite(s.days) && s.days >= 1 ? Math.round(s.days) : 7,
+    lastReset: Number.isFinite(s.lastReset) ? s.lastReset : 0,
+  };
+}
+export function setStatsReset(patch) {
+  const cur = effectiveStatsReset();
+  data.settings.statsReset = { ...cur, ...patch };
+  save();
+  return data.settings.statsReset;
+}
+export function resetStatsNow() {
+  return setStatsReset({ lastReset: Date.now() });
+}
+export function maybeAutoResetStats() {
+  const r = effectiveStatsReset();
+  if (!r.enabled) return false;
+  if (Date.now() - r.lastReset < r.days * 86400000) return false;
+  resetStatsNow();
+  return true;
+}
+
 /* ---------------- permissions par grade + macros ---------------- */
-export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart'];
+export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart', 'rankup'];
 export function effectivePerms() {
   const hi = Math.max(2, maxLevel - 2); // "directeur staff" par défaut
   const top = Math.max(2, maxLevel); // "voltgroup" par défaut
-  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top, orgchart: hi };
+  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top, orgchart: hi, rankup: hi };
   const s = data.settings.perms || {};
   const out = {};
   for (const k of PERM_KEYS) {
@@ -725,19 +768,21 @@ export function resetOnboarded(uid) {
 /* ---------------- 1re connexion au site de chaque personne (owner) ---------------- */
 // Enregistré UNE fois, à la toute première connexion, et gardé pour toujours.
 // Les connexions suivantes ne font que rafraîchir le pseudo / la dernière visite.
-export function recordLogin(uid, name, roleName) {
+export function recordLogin(uid, name, roleName, avatarUrl) {
   const id = String(uid);
   const now = Date.now();
   const e = data.firstSeen[id];
   if (e) {
     e.name = name; // on garde le pseudo Discord à jour
     e.roleName = roleName || null;
+    if (avatarUrl) e.avatar = avatarUrl;
     e.lastAt = now;
   } else {
     data.firstSeen[id] = {
       uid: id,
       name,
       roleName: roleName || null,
+      avatar: avatarUrl || null,
       firstAt: now, // ← jamais modifié
       lastAt: now,
     };
@@ -985,7 +1030,7 @@ export function listMessages(userId, limit = 200) {
 }
 
 // Statistiques agrégées (tickets en cours + archivés, visibles au niveau donné).
-export function getStats(maxLevel = Infinity) {
+export function getStats(maxLevel = Infinity, since = 0) {
   const now = Date.now();
   const live = Object.values(data.tickets)
     .filter((t) => (t.escalation_level || 1) <= maxLevel)
@@ -1019,11 +1064,14 @@ export function getStats(maxLevel = Infinity) {
     if (idx.has(key)) perDay[idx.get(key)].count++;
   }
 
+  // note : les compteurs "compétitifs" (réponses par staff, satisfaction) respectent
+  // la fenêtre de reset périodique ; les totaux de tickets restent sur tout l'historique.
   let ratingSum = 0;
   let ratingN = 0;
   const ratingStaff = {}; // name -> { sum, n }
   for (const { t } of recs) {
     if (!t.rating) continue;
+    if (since && (t.rated_at || 0) < since) continue;
     ratingSum += t.rating;
     ratingN++;
     const s = t.rated_staff;
@@ -1050,6 +1098,7 @@ export function getStats(maxLevel = Infinity) {
     }
     for (const m of msgs) {
       if (m.author !== 'staff') continue;
+      if (since && m.created_at < since) continue;
       const name =
         m.author_name.replace(/\s*\([^)]*\)\s*$/, '').trim() || m.author_name;
       byStaff[name] = (byStaff[name] || 0) + 1;
@@ -1074,6 +1123,7 @@ export function getStats(maxLevel = Infinity) {
         { avg: Math.round((v.sum / v.n) * 10) / 10, n: v.n },
       ]),
     ),
+    statsSince: since || null,
   };
 }
 

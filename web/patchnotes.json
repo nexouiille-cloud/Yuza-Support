@@ -1,5 +1,16 @@
 [
   {
+    "date": "2026-09-12",
+    "title": "Vrai organigramme, podium, équipe complète, changements de grades",
+    "items": [
+      "Organigramme repensé en vrai canvas : glisse chaque rang où tu veux à la souris, relie-les avec « Sous les ordres de » pour tracer une flèche. Tout ce qui était déjà rempli (rangs, membres, descriptions) est conservé tel quel.",
+      "Équipe en ligne : affiche maintenant tout le monde ayant déjà ouvert le site, pas seulement les connectés — un petit rond gris + « pas là · vu il y a… » pour ceux hors ligne.",
+      "Classement d'accueil transformé en podium 🥇🥈🥉 avec les vraies photos de profil Discord des 3 meilleurs, 4e/5e en dessous.",
+      "Reset automatique du classement staff (réponses + satisfaction) tous les X jours, réglable dans ⚙️ Réglages, + un bouton pour le faire à la main. Les tickets et l'historique ne sont jamais touchés.",
+      "Nouvelle section 🎖️ Changements de grades (dans 🛡️ Modération, accès réglable comme les autres) : ajoute des promotions/rétrogradations une par une, publie un seul embed groupé dans le salon annonces."
+    ]
+  },
+  {
     "date": "2026-09-11",
     "title": "Corrections visuelles + permission organigramme",
     "items": [

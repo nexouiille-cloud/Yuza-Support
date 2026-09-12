@@ -16,6 +16,8 @@ import {
   publishReprisePanel,
   postShopAnnounce,
   publishRecruit,
+  getMemberAvatar,
+  postRankupChanges,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -94,7 +96,10 @@ import {
   listOrgChart,
   upsertOrgGroup,
   deleteOrgGroup,
-  moveOrgGroup,
+  setOrgGroupPos,
+  effectiveStatsReset,
+  resetStatsNow,
+  maybeAutoResetStats,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -354,7 +359,7 @@ export function registerGateway(app) {
       send(entry, { type: 'tickets', tickets: visibleTickets(level) });
       send(entry, { type: 'activity_list', list: listActivity() });
       send(entry, { type: 'orgchart', list: listOrgChart() });
-      recordLogin(session.uid, session.name, entry.roleName);
+      recordLogin(session.uid, session.name, entry.roleName, getMemberAvatar(session.uid));
       if (entry.isOwner) {
         send(entry, { type: 'logins', list: listFirstSeen(), online: onlineUids() });
       }
@@ -373,7 +378,16 @@ export function registerGateway(app) {
 
       /* ---- statistiques ---- */
       if (msg.type === 'stats') {
-        send(entry, { type: 'stats', stats: getStats(entry.level) });
+        send(entry, { type: 'stats', stats: getStats(entry.level, effectiveStatsReset().lastReset) });
+        return;
+      }
+
+      /* ---- reset manuel des stats compétitives (owner) ---- */
+      if (msg.type === 'reset_stats_now') {
+        if (!entry.isOwner) return;
+        resetStatsNow();
+        logAct(session, 'settings', null, 'stats compétitives réinitialisées manuellement');
+        send(entry, { type: 'stats', stats: getStats(entry.level, effectiveStatsReset().lastReset) });
         return;
       }
 
@@ -402,9 +416,9 @@ export function registerGateway(app) {
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }
-      if (msg.type === 'orgchart_move') {
+      if (msg.type === 'orgchart_pos') {
         if (!entry.can?.orgchart || !msg.id) return;
-        moveOrgGroup(msg.id, msg.dir);
+        setOrgGroupPos(msg.id, Number(msg.x), Number(msg.y));
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }
@@ -555,6 +569,15 @@ export function registerGateway(app) {
               : 'custom',
           };
         }
+        if (p.statsReset && typeof p.statsReset === 'object') {
+          const cur = effectiveStatsReset();
+          const days = Number(p.statsReset.days);
+          patch.statsReset = {
+            ...cur,
+            enabled: !!p.statsReset.enabled,
+            days: Number.isFinite(days) && days >= 1 ? Math.round(days) : cur.days,
+          };
+        }
         if (Array.isArray(p.categoryRoles)) {
           patch.categoryRoles = p.categoryRoles
             .map((r) => ({
@@ -642,10 +665,48 @@ export function registerGateway(app) {
         return;
       }
 
+      /* ---- changements de grades (embed groupé promotions/rétrogradations) ---- */
+      if (msg.type === 'rankup_post') {
+        if (!entry.can?.rankup) {
+          send(entry, { type: 'rankup_result', ok: false, error: 'forbidden' });
+          return;
+        }
+        const clean = (arr) =>
+          (Array.isArray(arr) ? arr : [])
+            .map((e) => ({
+              discordId: String(e.discordId || '').trim(),
+              from: String(e.from || '').slice(0, 60),
+              to: String(e.to || '').slice(0, 60),
+              retired: !!e.retired,
+            }))
+            .filter((e) => e.discordId)
+            .slice(0, 25);
+        const promotions = clean(msg.promotions);
+        const demotions = clean(msg.demotions);
+        if (!promotions.length && !demotions.length) {
+          send(entry, { type: 'rankup_result', ok: false, error: 'vide' });
+          return;
+        }
+        try {
+          await postRankupChanges({ promotions, demotions, byName: session.name });
+          send(entry, { type: 'rankup_result', ok: true });
+          logAct(session, 'announce', null, `changements de grades (${promotions.length} promo, ${demotions.length} rétro)`);
+        } catch (e) {
+          send(entry, { type: 'rankup_result', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+
       /* ---- journal des connexions (owner uniquement) ---- */
       if (msg.type === 'get_logins') {
         if (!entry.isOwner) return;
         send(entry, { type: 'logins', list: listFirstSeen(), online: onlineUids() });
+        return;
+      }
+
+      /* ---- équipe (onglet Équipe en ligne) : tout le monde ayant déjà ouvert le site ---- */
+      if (msg.type === 'get_team') {
+        send(entry, { type: 'team', list: listFirstSeen(), online: onlineUids() });
         return;
       }
 
@@ -1452,4 +1513,11 @@ export function registerGateway(app) {
     }
     if (closedAny) pushTickets();
   }, 15 * 60000).unref?.();
+
+  // Reset auto. des stats "compétitives" (réponses/satisfaction) si activé (vérifié toutes les heures).
+  setInterval(() => {
+    if (maybeAutoResetStats()) {
+      logActivity(null, 'Système', 'settings', null, null, 'stats compétitives réinitialisées (auto)');
+    }
+  }, 60 * 60000).unref?.();
 }
