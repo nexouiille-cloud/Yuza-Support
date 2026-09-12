@@ -610,8 +610,8 @@ function renderMembersView(m) {
       : `${m.total} membre${m.total > 1 ? 's' : ''}`;
   if (!m.members.length) {
     box.innerHTML = m.cached
-      ? '<div class="muted">Aucun membre ne correspond.</div>'
-      : '<div class="muted">Liste des membres en cours de chargement… réessaie dans un instant.</div>';
+      ? emptyState('🔍', 'Aucun membre ne correspond', 'Essaie un pseudo, un tag, un ID, ou le nom d\'un rôle.')
+      : emptyState('⏳', 'Chargement de la liste des membres…', 'Réessaie dans un instant.');
     return;
   }
   box.innerHTML = '';
@@ -1989,6 +1989,7 @@ $('#rkPublish').addEventListener('click', () => {
       type: 'rankup_post',
       promotions: rkPending.filter((e) => e.kind === 'promo'),
       demotions: rkPending.filter((e) => e.kind === 'demo'),
+      channelId: $('#rkChan').value.trim(),
     }),
   );
 });
@@ -2695,7 +2696,7 @@ $('#annSend').addEventListener('click', () => {
   if (!text || !ws || ws.readyState !== 1) return;
   $('#annSend').disabled = true;
   $('#annStatus').textContent = 'publication…';
-  ws.send(JSON.stringify({ type: 'announce', text }));
+  ws.send(JSON.stringify({ type: 'announce', text, channelId: $('#annChan').value.trim() }));
 });
 $('#sancAdd').addEventListener('click', () => {
   const targetId = $('#sancId').value.trim();
@@ -2703,7 +2704,7 @@ $('#sancAdd').addEventListener('click', () => {
   const reason = $('#sancReason').value.trim();
   if (!targetId || !ws || ws.readyState !== 1) return;
   if (!window.confirm(`Ajouter une sanction à ${targetName || targetId} ?`)) return;
-  ws.send(JSON.stringify({ type: 'sanction_add', targetId, targetName, reason }));
+  ws.send(JSON.stringify({ type: 'sanction_add', targetId, targetName, reason, channelId: $('#sancChan').value.trim() }));
   $('#sancId').value = $('#sancName').value = $('#sancReason').value = '';
 });
 function renderSanctions(list) {
@@ -2977,6 +2978,7 @@ $('#shopSend').addEventListener('click', () => {
       bannerUrl: $('#shopBanner').value.trim(),
       linkUrl: $('#shopLink').value.trim(),
       linkLabel: $('#shopLinkLabel').value.trim(),
+      channelId: $('#shopChanOverride').value.trim(),
     }),
   );
 });

@@ -167,7 +167,7 @@ export async function refreshMembers() {
     console.error('[bot] refreshMembers échoué :', err?.message || err);
   }
 }
-export function searchMembers(query, limit = 80) {
+export function searchMembers(query, limit = 1000) {
   const q = String(query || '').trim().toLowerCase();
   let list = membersCache;
   if (q) {
@@ -514,9 +514,9 @@ export async function pingRoleInChannel(roleId, text) {
   }
 }
 
-// Publie une annonce dans le salon annonces.
-export async function postAnnouncement(text, byName) {
-  const channelId = effectiveAnnounceChannel();
+// Publie une annonce dans le salon annonces (ou un salon choisi pour cette fois).
+export async function postAnnouncement(text, byName, channelId) {
+  channelId = channelId || effectiveAnnounceChannel();
   if (!channelId) throw new Error('salon annonces non configuré');
   const ch = await bot.channels.fetch(channelId);
   if (!ch || !ch.isTextBased()) throw new Error('salon annonces introuvable');
@@ -529,8 +529,8 @@ export async function postAnnouncement(text, byName) {
 }
 
 // Publie un embed groupé "Changements de grades" (promotions/rétrogradations) dans le salon annonces.
-export async function postRankupChanges({ promotions = [], demotions = [], byName }) {
-  const channelId = effectiveAnnounceChannel();
+export async function postRankupChanges({ promotions = [], demotions = [], byName, channelId }) {
+  channelId = channelId || effectiveAnnounceChannel();
   if (!channelId) throw new Error('salon annonces non configuré');
   const ch = await bot.channels.fetch(channelId);
   if (!ch || !ch.isTextBased()) throw new Error('salon annonces introuvable');
@@ -556,8 +556,8 @@ export async function postRankupChanges({ promotions = [], demotions = [], byNam
 }
 
 // Trace une sanction dans le salon sanctions.
-export async function postSanction({ targetId, targetName, reason, byName, count }) {
-  const channelId = effectiveSanctionChannel();
+export async function postSanction({ targetId, targetName, reason, byName, count, channelId }) {
+  channelId = channelId || effectiveSanctionChannel();
   if (!channelId) return;
   try {
     const ch = await bot.channels.fetch(channelId);

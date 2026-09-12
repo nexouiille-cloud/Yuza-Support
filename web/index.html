@@ -354,6 +354,8 @@
         <p class="muted">Ajoute chaque changement à la liste, puis publie un seul embed groupé dans le salon annonces.</p>
 
         <div class="setgrp">
+          <label>Salon (optionnel)</label>
+          <input id="rkChan" type="text" placeholder="ID du salon — vide = salon annonces par défaut" />
           <label>Membre</label>
           <input id="rkSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
           <div id="rkSearchResults"></div>
@@ -630,7 +632,8 @@
       <section id="viewAnnounce" class="view">
         <div class="stats-head"><h2>📢 Annonces</h2></div>
         <div class="setgrp">
-          <p class="muted">Envoyée dans le salon annonces configuré dans les Réglages.</p>
+          <p class="muted">Envoyée dans le salon annonces par défaut (⚙️), ou dans le salon ci-dessous si rempli.</p>
+          <label class="setline">Salon (optionnel) <input type="text" id="annChan" placeholder="ID du salon — vide = salon par défaut" /></label>
           <textarea id="annText" rows="4" placeholder="Ton annonce…"></textarea>
           <div class="mm-actions">
             <button id="annSend" class="btn-accent" type="button">Publier l'annonce</button>
@@ -644,6 +647,7 @@
         <div class="stats-head"><h2>⚠ Sanctions du staff</h2></div>
         <div class="setgrp">
           <p class="muted">3 sanctions actives = accès au site retiré pour la personne.</p>
+          <label class="setline">Salon de trace (optionnel) <input type="text" id="sancChan" placeholder="ID du salon — vide = salon par défaut" /></label>
           <div class="sanction-add">
             <input type="text" id="sancId" placeholder="ID Discord du staff" />
             <input type="text" id="sancName" placeholder="Pseudo" />
@@ -669,7 +673,8 @@
       <section id="viewShop" class="view">
         <div class="stats-head"><h2>🛒 Boutique</h2></div>
         <div class="setgrp">
-          <p class="muted">Poste une annonce embed dans le salon boutique (⚙️).</p>
+          <p class="muted">Poste une annonce embed dans le salon boutique par défaut (⚙️), ou dans le salon ci-dessous si rempli.</p>
+          <label class="setline">Salon (optionnel) <input type="text" id="shopChanOverride" placeholder="ID du salon — vide = salon par défaut" /></label>
           <label class="setline">Titre <input type="text" id="shopTitle" maxlength="200" placeholder="Nouveau pack VIP disponible !" /></label>
           <textarea id="shopText" rows="3" placeholder="Détaille la nouveauté / la remise…"></textarea>
           <label class="setline">Bannière (URL image) <input type="text" id="shopBanner" placeholder="https://…/banniere.png" /></label>

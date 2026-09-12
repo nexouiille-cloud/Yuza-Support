@@ -663,7 +663,7 @@ export function registerGateway(app) {
           return;
         }
         try {
-          await postAnnouncement(text, session.name);
+          await postAnnouncement(text, session.name, String(msg.channelId || '').trim() || undefined);
           send(entry, { type: 'announced', ok: true });
           logAct(session, 'announce', null, text.slice(0, 140));
         } catch (e) {
@@ -695,7 +695,7 @@ export function registerGateway(app) {
           return;
         }
         try {
-          await postRankupChanges({ promotions, demotions, byName: session.name });
+          await postRankupChanges({ promotions, demotions, byName: session.name, channelId: String(msg.channelId || '').trim() || undefined });
           send(entry, { type: 'rankup_result', ok: true });
           logAct(session, 'announce', null, `changements de grades (${promotions.length} promo, ${demotions.length} rétro)`);
         } catch (e) {
@@ -734,7 +734,7 @@ export function registerGateway(app) {
         if (!targetId) return;
         addSanction(targetId, targetName, reason, session.uid, session.name);
         const count = activeSanctionCount(targetId);
-        postSanction({ targetId, targetName, reason, byName: session.name, count });
+        postSanction({ targetId, targetName, reason, byName: session.name, count, channelId: String(msg.channelId || '').trim() || undefined });
         logAct(session, 'sanction', null, `${targetName} — ${reason || 'sans motif'} (${count}/3)`);
         // 3 sanctions actives -> on éjecte ses sockets
         if (count >= 3) {
@@ -992,6 +992,7 @@ export function registerGateway(app) {
             bannerUrl: String(msg.bannerUrl || '').trim(),
             linkUrl: String(msg.linkUrl || '').trim(),
             linkLabel: String(msg.linkLabel || '').slice(0, 60),
+            channelId: String(msg.channelId || '').trim() || undefined,
           });
           send(entry, { type: 'shop_result', ok: true });
           logAct(session, 'shop', null, String(msg.title || 'annonce boutique').slice(0, 140));

@@ -1,6 +1,17 @@
 [
   {
     "date": "2026-09-12",
+    "title": "Salon au choix, corrections membres, Réglages sur 2 colonnes",
+    "items": [
+      "Annonces, Sanctions, Changements de grades et Boutique : possibilité de choisir un salon Discord ponctuel (sinon le salon par défaut des Réglages est utilisé).",
+      "Icônes de la barre latérale recentrées — certaines étaient légèrement décalées.",
+      "Membres du serveur : la liste ne s'arrête plus à 80 résultats — tous les membres qui correspondent à ta recherche s'affichent maintenant. La recherche par rôle fonctionne (tape « citoyen » pour voir tout le monde avec ce rôle).",
+      "Membres du serveur / Équipe / Sanctions / Webhooks : les cartes ne laissent plus de grands trous vides quand certaines sont plus hautes que d'autres.",
+      "⚙️ Réglages passé en 2 colonnes sur grand écran — beaucoup moins de défilement pour tout voir."
+    ]
+  },
+  {
+    "date": "2026-09-12",
     "title": "Animations, interactions et espace mieux utilisé",
     "items": [
       "Badge « Nouveau » sur les onglets récemment ajoutés (disparaît une fois visité, ou après 2 semaines).",
