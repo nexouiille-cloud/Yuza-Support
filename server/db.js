@@ -140,6 +140,15 @@ export function setOrgGroupPos(id, x, y) {
   return g;
 }
 
+export function setOrgGroupSize(id, w) {
+  id = Number(id);
+  const g = data.orgChart.find((n) => n.id === id);
+  if (!g || !Number.isFinite(w)) return null;
+  g.w = Math.round(Math.max(140, Math.min(420, w)));
+  save();
+  return g;
+}
+
 export function deleteOrgGroup(id) {
   id = Number(id);
   const g = data.orgChart.find((x) => x.id === id);
@@ -407,8 +416,9 @@ export function maybeAutoResetStats() {
 export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart', 'rankup'];
 export function effectivePerms() {
   const hi = Math.max(2, maxLevel - 2); // "directeur staff" par défaut
+  const mid = Math.max(2, maxLevel - 1); // "resp.g" par défaut (un cran sous le tout-haut)
   const top = Math.max(2, maxLevel); // "voltgroup" par défaut
-  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: top, webhooks: top, panels: top, orgchart: hi, rankup: hi };
+  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: mid, webhooks: top, panels: mid, orgchart: hi, rankup: hi };
   const s = data.settings.perms || {};
   const out = {};
   for (const k of PERM_KEYS) {

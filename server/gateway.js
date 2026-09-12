@@ -97,6 +97,7 @@ import {
   upsertOrgGroup,
   deleteOrgGroup,
   setOrgGroupPos,
+  setOrgGroupSize,
   effectiveStatsReset,
   resetStatsNow,
   maybeAutoResetStats,
@@ -419,6 +420,12 @@ export function registerGateway(app) {
       if (msg.type === 'orgchart_pos') {
         if (!entry.can?.orgchart || !msg.id) return;
         setOrgGroupPos(msg.id, Number(msg.x), Number(msg.y));
+        broadcastAll({ type: 'orgchart', list: listOrgChart() });
+        return;
+      }
+      if (msg.type === 'orgchart_size') {
+        if (!entry.can?.orgchart || !msg.id) return;
+        setOrgGroupSize(msg.id, Number(msg.w));
         broadcastAll({ type: 'orgchart', list: listOrgChart() });
         return;
       }

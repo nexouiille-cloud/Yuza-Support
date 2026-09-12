@@ -1,6 +1,38 @@
 [
   {
     "date": "2026-09-12",
+    "title": "Polish visuel : espaces vides, chargement, textures",
+    "items": [
+      "Les écrans (Sanctions, Suggestions, Signalements, Journal d'activité, liste de tickets, Équipe…) ont maintenant un vrai état vide (icône + message), plus joli qu'un simple texte gris perdu dans le vide.",
+      "Petit effet de chargement (silhouettes qui pulsent) le temps que les données arrivent sur Équipe en ligne, Statistiques et Journal d'activité.",
+      "Fond légèrement texturé (petits points) sur toutes les pages de contenu — l'espace vide en bas des listes courtes ne fait plus \"vide/cassé\", surtout sur grand écran."
+    ]
+  },
+  {
+    "date": "2026-09-12",
+    "title": "Annonces, Sanctions, Panneaux, Boutique — onglets séparés",
+    "items": [
+      "📢 Annonces et ⚠ Sanctions du staff ont maintenant leur propre onglet (accès Directeur Staff et au-dessus, comme avant), séparés de 🛡️ Modération.",
+      "📋 Panneaux « Reprise » et 🛒 Boutique ont aussi leur propre onglet — accès réglé un cran plus haut (Resp.G et au-dessus) par défaut. Réglable dans ⚙️ Réglages comme toutes les autres permissions.",
+      "🛡️ Modération ne garde plus que Recrutement et Webhooks."
+    ]
+  },
+  {
+    "date": "2026-09-12",
+    "title": "Changements de grades — onglet séparé",
+    "items": [
+      "🎖️ Changements de grades a maintenant son propre onglet dans la barre de gauche, séparé de 🛡️ Modération — même accès réglable qu'avant (Directeur Staff et au-dessus par défaut)."
+    ]
+  },
+  {
+    "date": "2026-09-12",
+    "title": "Organigramme redimensionnable",
+    "items": [
+      "Chaque boîte de l'organigramme a maintenant une petite poignée en bas à droite : glisse-la pour l'agrandir ou la rétrécir, la taille est gardée en mémoire."
+    ]
+  },
+  {
+    "date": "2026-09-12",
     "title": "Vrai organigramme, podium, équipe complète, changements de grades",
     "items": [
       "Organigramme repensé en vrai canvas : glisse chaque rang où tu veux à la souris, relie-les avec « Sous les ordres de » pour tracer une flèche. Tout ce qui était déjà rempli (rangs, membres, descriptions) est conservé tel quel.",

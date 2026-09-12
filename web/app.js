@@ -58,6 +58,19 @@ const esc = (s) =>
 
 function setStatus(s) { $('#statusText').textContent = s; }
 
+/* ---------------- états vides / chargement (réutilisés partout) ---------------- */
+function emptyState(icon, title, hint) {
+  return (
+    `<div class="empty-state"><div class="es-ico">${icon}</div>` +
+    `<div class="es-title">${esc(title)}</div>` +
+    (hint ? `<div class="es-hint">${esc(hint)}</div>` : '') +
+    `</div>`
+  );
+}
+function skelRows(n, cls) {
+  return Array.from({ length: n }, (_, i) => `<div class="skel-row ${cls || ''}" style="animation-delay:${i * 0.06}s"></div>`).join('');
+}
+
 /* ---------------- thème ---------------- */
 function lighten(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
@@ -244,11 +257,14 @@ function showView(name) {
   );
   if (name === 'home') renderHome();
   if (name === 'staff') {
-    renderStaffView();
+    if (!presence.length && !teamRoster.length) $('#staffList').innerHTML = skelRows(4);
+    else renderStaffView();
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_team' }));
   }
-  if (name === 'stats' && ws && ws.readyState === 1)
-    ws.send(JSON.stringify({ type: 'stats' }));
+  if (name === 'stats') {
+    if (!lastStats) $('#statsBody').innerHTML = skelRows(2, 'lg') + skelRows(4);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' }));
+  }
   if (name === 'settings' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_settings' }));
     if (settingsScope === 'owner') ws.send(JSON.stringify({ type: 'get_logins' }));
@@ -258,31 +274,40 @@ function showView(name) {
   if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
   if (name === 'mod') {
-    $('#modAnnounce').classList.toggle('hidden', !perms.announce);
-    $('#modSanctions').classList.toggle('hidden', !perms.sanctions);
-    $('#modPanels').classList.toggle('hidden', !perms.panels);
-    $('#modShop').classList.toggle('hidden', !perms.shop);
     $('#modRecruit').classList.toggle('hidden', !perms.recruit);
     $('#modHooks').classList.toggle('hidden', !perms.webhooks);
-    $('#modRankup').classList.toggle('hidden', !perms.rankup);
     if (ws && ws.readyState === 1) {
-      if (perms.sanctions) ws.send(JSON.stringify({ type: 'get_sanctions' }));
-      if (perms.panels) ws.send(JSON.stringify({ type: 'get_panels' }));
       if (perms.recruit) ws.send(JSON.stringify({ type: 'get_recruit' }));
       if (perms.webhooks) ws.send(JSON.stringify({ type: 'get_hooks' }));
     }
   }
+  if (name === 'announce') {
+    $('#annStatus').textContent = '';
+  }
+  if (name === 'sanctions' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_sanctions' }));
+  }
+  if (name === 'panels' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_panels' }));
+  }
+  if (name === 'shop') {
+    $('#shopStatus').textContent = '';
+  }
   if (name === 'report' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_reports' }));
   if (name === 'activity') {
+    if (activity.length) renderActivity();
+    else $('#actList').innerHTML = skelRows(5);
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_activity' }));
-    renderActivity();
   }
   if (name === 'orgchart') {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_orgchart' }));
     $('#ogAddBox').classList.toggle('hidden', !perms.orgchart);
     $('#ogEditHint').classList.toggle('hidden', !perms.orgchart);
     renderOrgChart();
+  }
+  if (name === 'rankup') {
+    $('#rkStatus').textContent = '';
   }
   if (name === 'convoke' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
@@ -292,9 +317,14 @@ function showView(name) {
 
 /* ---------------- permissions : affichage des onglets ---------------- */
 function applyPermsUI() {
-  const anyMod = ['announce', 'recruit', 'sanctions', 'shop', 'webhooks', 'panels', 'rankup'].some((k) => perms[k]);
+  const anyMod = ['recruit', 'webhooks'].some((k) => perms[k]);
   $('#modNav').classList.toggle('hidden', !anyMod);
   $('#bannersNav').classList.toggle('hidden', !perms.banners);
+  $('#rankupNav').classList.toggle('hidden', !perms.rankup);
+  $('#announceNav').classList.toggle('hidden', !perms.announce);
+  $('#sanctionsNav').classList.toggle('hidden', !perms.sanctions);
+  $('#panelsNav').classList.toggle('hidden', !perms.panels);
+  $('#shopNav').classList.toggle('hidden', !perms.shop);
   const cm = $('#cMacros');
   if (cm) cm.classList.toggle('hidden', settingsScope !== 'owner');
   $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
@@ -415,7 +445,7 @@ function renderSugList(list) {
   box.classList.toggle('hidden', settingsScope !== 'owner');
   if (settingsScope !== 'owner') return;
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Aucune suggestion.</div>';
+    box.innerHTML = emptyState('💡', 'Aucune suggestion pour l\'instant', "Les idées de l'équipe pour améliorer le panel apparaîtront ici.");
     return;
   }
   box.innerHTML = '';
@@ -450,7 +480,7 @@ function renderReports(list) {
   // visible dès qu'il y a un signalement à afficher (le staff voit les siens, le modo voit tout)
   box.classList.toggle('hidden', !list.length && !canModerate);
   if (!list.length) {
-    box.innerHTML = canModerate ? '<div class="muted">Aucun signalement.</div>' : '';
+    box.innerHTML = canModerate ? emptyState('🐞', 'Aucun signalement', 'Les bugs et problèmes remontés par le staff apparaîtront ici.') : '';
     return;
   }
   box.innerHTML = '';
@@ -576,7 +606,7 @@ function renderStaffView() {
     return (a.name || '').localeCompare(b.name || '');
   });
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Personne ne s\'est encore connecté.</div>';
+    box.innerHTML = emptyState('👥', 'Personne ne s\'est encore connecté', "L'équipe apparaîtra ici dès la première connexion.");
     return;
   }
   box.innerHTML = list
@@ -594,7 +624,8 @@ function renderStaffView() {
         `<div class="staff-item offline"><span class="sdot st-offline" title="Pas là"></span>` +
         `<span class="sname">${esc(s.name)}` +
         `<span class="sst">pas là${s.lastAt ? ' · vu ' + ago(s.lastAt) : ''}</span></span>` +
-        `<span class="srole">${esc(s.roleName || '')}</span></div>`
+        (s.roleName ? `<span class="srole">${esc(s.roleName)}</span>` : '') +
+        `</div>`
       );
     })
     .join('');
@@ -1103,11 +1134,17 @@ function handle(m) {
       if (m.theme) applyTheme(m.theme);
       break;
 
-    case 'perms':
+    case 'perms': {
       perms = m.perms || {};
       applyPermsUI();
-      if ($('#viewMod').classList.contains('active')) showView('mod');
+      // si la vue active dépend d'une permission, la rafraîchir (gating + fetch)
+      const activeId = $('.view.active')?.id;
+      if (activeId) {
+        const vname = activeId.replace(/^view/, '');
+        showView(vname.charAt(0).toLowerCase() + vname.slice(1));
+      }
       break;
+    }
 
     case 'macros':
       macros = Array.isArray(m.macros) ? m.macros : [];
@@ -1427,7 +1464,7 @@ function renderActivity() {
   const rows = activity.filter(actMatchesFilter);
   $('#actCount').textContent = rows.length ? `${rows.length} action${rows.length > 1 ? 's' : ''}` : '';
   if (!rows.length) {
-    box.innerHTML = '<p class="muted">Aucune action pour ce filtre.</p>';
+    box.innerHTML = emptyState('📋', 'Aucune action pour ce filtre', 'Les actions du staff (réponses, sanctions, réglages…) apparaîtront ici en direct.');
     return;
   }
   box.innerHTML = rows
@@ -1604,14 +1641,16 @@ function ogPos(g, i) {
 }
 
 function ogBoxHtml(g, pos, isOwner) {
+  const w = g.w || OG_BOX_W;
   const actions = isOwner
     ? `<div class="og-actions">` +
       `<button class="og-a" data-og-edit="${g.id}" title="Modifier">✏️</button>` +
       `<button class="og-a" data-og-del="${g.id}" title="Supprimer">🗑️</button>` +
       `</div>`
     : '';
+  const resize = isOwner ? `<div class="og-resize" title="Redimensionner"></div>` : '';
   return (
-    `<div class="og-box" data-id="${g.id}" style="left:${pos.x}px;top:${pos.y}px${isOwner ? ';cursor:grab' : ''}">` +
+    `<div class="og-box" data-id="${g.id}" style="left:${pos.x}px;top:${pos.y}px;width:${w}px${isOwner ? ';cursor:grab' : ''}">` +
     `<div class="og-ghead"><div class="og-gtitle">${esc(g.title)}</div>${actions}</div>` +
     (g.description ? `<div class="og-gdesc">${esc(g.description)}</div>` : '') +
     `<div class="og-members">` +
@@ -1622,6 +1661,7 @@ function ogBoxHtml(g, pos, isOwner) {
       )
       .join('') +
     `</div>` +
+    resize +
     `</div>`
   );
 }
@@ -1635,9 +1675,9 @@ function ogDrawArrows(posById) {
     if (!g.parentId || !posById.has(g.parentId) || !posById.has(g.id)) return;
     const p = posById.get(g.parentId);
     const c = posById.get(g.id);
-    const x1 = p.x + OG_BOX_W / 2;
+    const x1 = p.x + p.w / 2;
     const y1 = p.y + p.h;
-    const x2 = c.x + OG_BOX_W / 2;
+    const x2 = c.x + c.w / 2;
     const y2 = c.y;
     const midY = (y1 + y2) / 2;
     inner += `<path d="M${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" stroke="var(--border-strong)" stroke-width="2" fill="none" marker-end="url(#ogArrow)"/>`;
@@ -1646,11 +1686,12 @@ function ogDrawArrows(posById) {
 }
 
 let ogDrag = null; // { id, startX, startY, boxStartX, boxStartY }
+let ogResize = null; // { id, startX, startW }
 
 function ogAttachDrag(el, g) {
   el.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('.og-a')) return; // pas sur les boutons ✏️🗑️
-    el.setPointerCapture(e.pointerId);
+    if (e.target.closest('.og-a') || e.target.closest('.og-resize')) return; // pas sur les boutons ✏️🗑️ ni la poignée
+    try { el.setPointerCapture(e.pointerId); } catch {}
     ogDrag = { id: g.id, startX: e.clientX, startY: e.clientY, boxStartX: parseFloat(el.style.left), boxStartY: parseFloat(el.style.top) };
     el.style.cursor = 'grabbing';
     el.classList.add('dragging');
@@ -1678,12 +1719,58 @@ function ogAttachDrag(el, g) {
   el.addEventListener('pointercancel', end);
 }
 
+function ogAttachResize(handle, el, g) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    try { handle.setPointerCapture(e.pointerId); } catch {}
+    ogResize = { id: g.id, startX: e.clientX, startW: parseFloat(el.style.width) || OG_BOX_W };
+    el.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!ogResize || ogResize.id !== g.id) return;
+    const nw = Math.max(140, Math.min(420, ogResize.startW + (e.clientX - ogResize.startX)));
+    el.style.width = nw + 'px';
+    ogRedrawArrowsLive();
+  });
+  const end = (e) => {
+    if (!ogResize || ogResize.id !== g.id) return;
+    const nw = Math.max(140, Math.min(420, parseFloat(el.style.width)));
+    ogResize = null;
+    el.classList.remove('resizing');
+    g.w = nw;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_size', id: g.id, w: nw }));
+    ogFitCanvas();
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
 function ogRedrawArrowsLive() {
   const posById = new Map();
   $('#ogCanvas').querySelectorAll('.og-box').forEach((el) => {
-    posById.set(Number(el.dataset.id), { x: parseFloat(el.style.left), y: parseFloat(el.style.top), h: el.offsetHeight });
+    posById.set(Number(el.dataset.id), {
+      x: parseFloat(el.style.left),
+      y: parseFloat(el.style.top),
+      w: el.offsetWidth,
+      h: el.offsetHeight,
+    });
   });
   ogDrawArrows(posById);
+}
+
+function ogFitCanvas() {
+  const canvas = $('#ogCanvas');
+  let maxX = 900, maxY = 600;
+  canvas.querySelectorAll('.og-box').forEach((el) => {
+    maxX = Math.max(maxX, parseFloat(el.style.left) + el.offsetWidth + 60);
+    maxY = Math.max(maxY, parseFloat(el.style.top) + el.offsetHeight + 60);
+  });
+  canvas.style.width = maxX + 'px';
+  canvas.style.height = maxY + 'px';
+  $('#ogArrows').style.width = maxX + 'px';
+  $('#ogArrows').style.height = maxY + 'px';
+  $('#ogArrows').setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+  ogRedrawArrowsLive();
 }
 
 function renderOrgChart() {
@@ -1702,22 +1789,15 @@ function renderOrgChart() {
   canvas.querySelectorAll('.og-box').forEach((el) => {
     const g = orgChart.find((x) => x.id === Number(el.dataset.id));
     if (!g) return;
-    if (isOwner) ogAttachDrag(el, g);
+    if (isOwner) {
+      ogAttachDrag(el, g);
+      const handle = el.querySelector('.og-resize');
+      if (handle) ogAttachResize(handle, el, g);
+    }
     el.querySelector('[data-og-edit]')?.addEventListener('click', () => ogEditGroup(g));
     el.querySelector('[data-og-del]')?.addEventListener('click', () => ogDeleteGroup(g.id, g.title));
   });
-  // taille du canvas = englobe toutes les boîtes + marge, pour que le scroll fonctionne
-  let maxX = 900, maxY = 600;
-  canvas.querySelectorAll('.og-box').forEach((el) => {
-    maxX = Math.max(maxX, parseFloat(el.style.left) + OG_BOX_W + 60);
-    maxY = Math.max(maxY, parseFloat(el.style.top) + el.offsetHeight + 60);
-  });
-  canvas.style.width = maxX + 'px';
-  canvas.style.height = maxY + 'px';
-  $('#ogArrows').style.width = maxX + 'px';
-  $('#ogArrows').style.height = maxY + 'px';
-  $('#ogArrows').setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
-  ogRedrawArrowsLive();
+  ogFitCanvas();
 }
 
 /* ---------------- changements de grades (rank up / rétrogradation) ---------------- */
@@ -1734,7 +1814,7 @@ $('#rkSearch').addEventListener('input', (e) => {
 });
 
 function renderRkResults(m) {
-  if (!$('#viewMod').classList.contains('active') || $('#modRankup').classList.contains('hidden')) return;
+  if (!$('#viewRankup').classList.contains('active')) return;
   const box = $('#rkSearchResults');
   const q = $('#rkSearch').value.trim();
   if (!m.members || !m.members.length || !q) {
@@ -2049,18 +2129,19 @@ function renderSidebar() {
   const box = $('#ticketList');
   box.innerHTML = '';
   if (!list.length) {
-    const why = searchIds
-      ? 'Aucun résultat.'
+    const [ico, why] = searchIds
+      ? ['🔍', 'Aucun résultat']
       : filterMode === 'closed'
-        ? 'Aucun ticket clôturé.'
+        ? ['✅', 'Aucun ticket clôturé']
         : filterMode === 'unassigned'
-          ? 'Aucun ticket non assigné.'
+          ? ['🖐️', 'Aucun ticket non assigné']
           : filterMode === 'towait'
-            ? 'Rien à traiter — tout est en attente client.'
+            ? ['⏱', 'Rien à traiter']
             : filterMode === 'open'
-              ? 'Aucun ticket ouvert.'
-              : "Aucun ticket pour l'instant.";
-    box.innerHTML = `<div class="empty">${why}</div>`;
+              ? ['🎫', 'Aucun ticket ouvert']
+              : ['🎫', "Aucun ticket pour l'instant"];
+    const hint = filterMode === 'towait' ? 'Tout est en attente côté client.' : '';
+    box.innerHTML = emptyState(ico, why, hint);
     updateTitle();
     return;
   }
@@ -2549,7 +2630,7 @@ function renderSanctions(list) {
   const counts = {};
   list.filter((s) => s.active).forEach((s) => { counts[s.targetId] = (counts[s.targetId] || 0) + 1; });
   if (!list.length) {
-    box.innerHTML = '<div class="muted">Aucune sanction.</div>';
+    box.innerHTML = emptyState('⚠', 'Aucune sanction', "L'équipe est clean — les sanctions actives apparaîtront ici.");
     return;
   }
   box.innerHTML = list

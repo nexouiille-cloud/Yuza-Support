@@ -149,6 +149,11 @@
       <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Signaler un bug</span></button>
       <button class="navbtn" data-view="activity"><span>📋</span><span class="tip">Journal d'activité</span></button>
       <button class="navbtn" data-view="orgchart"><span>🗂️</span><span class="tip">Organigramme</span></button>
+      <button class="navbtn hidden" id="rankupNav" data-view="rankup"><span>🎖️</span><span class="tip">Changements de grades</span></button>
+      <button class="navbtn hidden" id="announceNav" data-view="announce"><span>📢</span><span class="tip">Annonces</span></button>
+      <button class="navbtn hidden" id="sanctionsNav" data-view="sanctions"><span>⚠</span><span class="tip">Sanctions du staff</span></button>
+      <button class="navbtn hidden" id="panelsNav" data-view="panels"><span>📋</span><span class="tip">Panneaux « Reprise »</span></button>
+      <button class="navbtn hidden" id="shopNav" data-view="shop"><span>🛒</span><span class="tip">Boutique</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
       <button class="navbtn hidden" id="bannersNav" data-view="banners"><span>🎨</span><span class="tip">Bannières</span></button>
@@ -340,6 +345,33 @@
         <div id="ogCanvasWrap">
           <svg id="ogArrows"></svg>
           <div id="ogCanvas"></div>
+        </div>
+      </section>
+
+      <!-- ---- Changements de grades ---- -->
+      <section id="viewRankup" class="view">
+        <div class="stats-head"><h2>🎖️ Changements de grades</h2></div>
+        <p class="muted">Ajoute chaque changement à la liste, puis publie un seul embed groupé dans le salon annonces.</p>
+
+        <div class="setgrp">
+          <label>Membre</label>
+          <input id="rkSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
+          <div id="rkSearchResults"></div>
+          <div id="rkPicked" class="hidden"></div>
+          <div class="be-row">
+            <div><label>Ancien grade</label><input id="rkFrom" type="text" placeholder="ex : Modération" maxlength="60" /></div>
+            <div><label>Nouveau grade</label><input id="rkTo" type="text" placeholder="ex : Admin" maxlength="60" /></div>
+          </div>
+          <label class="setline"><input type="checkbox" id="rkRetired" /> Retiré du staff (pas de nouveau grade)</label>
+          <div class="mm-actions">
+            <button id="rkAddPromo" type="button" disabled>⬆️ Ajouter en promotion</button>
+            <button id="rkAddDemo" type="button" disabled>⬇️ Ajouter en rétrogradation</button>
+          </div>
+          <div id="rkPending"></div>
+          <div class="mm-actions">
+            <button id="rkPublish" class="btn-accent" type="button" disabled>📣 Publier les changements</button>
+            <span id="rkStatus" class="who"></span>
+          </div>
         </div>
       </section>
 
@@ -594,12 +626,10 @@
         <div id="patchList"><div class="muted">Chargement…</div></div>
       </section>
 
-      <!-- ---- Modération (annonces + sanctions) ---- -->
-      <section id="viewMod" class="view">
-        <div class="stats-head"><h2>🛡️ Modération</h2></div>
-
-        <div class="setgrp" id="modAnnounce">
-          <h4>📢 Publier une annonce</h4>
+      <!-- ---- Annonces ---- -->
+      <section id="viewAnnounce" class="view">
+        <div class="stats-head"><h2>📢 Annonces</h2></div>
+        <div class="setgrp">
           <p class="muted">Envoyée dans le salon annonces configuré dans les Réglages.</p>
           <textarea id="annText" rows="4" placeholder="Ton annonce…"></textarea>
           <div class="mm-actions">
@@ -607,32 +637,12 @@
             <span id="annStatus" class="who"></span>
           </div>
         </div>
+      </section>
 
-        <div class="setgrp" id="modRankup">
-          <h4>🎖️ Changements de grades</h4>
-          <p class="muted">Ajoute chaque changement à la liste, puis publie un seul embed groupé dans le salon annonces.</p>
-          <label>Membre</label>
-          <input id="rkSearch" type="text" placeholder="Chercher un pseudo, un tag ou un ID…" autocomplete="off" />
-          <div id="rkSearchResults"></div>
-          <div id="rkPicked" class="hidden"></div>
-          <div class="be-row">
-            <div><label>Ancien grade</label><input id="rkFrom" type="text" placeholder="ex : Modération" maxlength="60" /></div>
-            <div><label>Nouveau grade</label><input id="rkTo" type="text" placeholder="ex : Admin" maxlength="60" /></div>
-          </div>
-          <label class="setline"><input type="checkbox" id="rkRetired" /> Retiré du staff (pas de nouveau grade)</label>
-          <div class="mm-actions">
-            <button id="rkAddPromo" type="button" disabled>⬆️ Ajouter en promotion</button>
-            <button id="rkAddDemo" type="button" disabled>⬇️ Ajouter en rétrogradation</button>
-          </div>
-          <div id="rkPending"></div>
-          <div class="mm-actions">
-            <button id="rkPublish" class="btn-accent" type="button" disabled>📣 Publier les changements</button>
-            <span id="rkStatus" class="who"></span>
-          </div>
-        </div>
-
-        <div class="setgrp" id="modSanctions">
-          <h4>⚠ Sanctions du staff</h4>
+      <!-- ---- Sanctions du staff ---- -->
+      <section id="viewSanctions" class="view">
+        <div class="stats-head"><h2>⚠ Sanctions du staff</h2></div>
+        <div class="setgrp">
           <p class="muted">3 sanctions actives = accès au site retiré pour la personne.</p>
           <div class="sanction-add">
             <input type="text" id="sancId" placeholder="ID Discord du staff" />
@@ -642,17 +652,23 @@
           </div>
           <div id="sancList"></div>
         </div>
+      </section>
 
-        <div class="setgrp" id="modPanels">
-          <h4>📋 Panneaux « Reprise » (Groupes illégaux / Entreprises)</h4>
+      <!-- ---- Panneaux « Reprise » ---- -->
+      <section id="viewPanels" class="view">
+        <div class="stats-head"><h2>📋 Panneaux « Reprise »</h2></div>
+        <div class="setgrp">
           <p class="muted">Crée un embed Discord avec des sections et des lignes 🟩 dispo / 🟥 indispo, puis publie-le dans un salon. Re-publier met à jour le même message.</p>
           <div id="panelList"></div>
           <button id="panelNew" class="linkbtn" type="button">+ Nouveau panneau</button>
           <div id="panelEditor" class="hidden"></div>
         </div>
+      </section>
 
-        <div class="setgrp" id="modShop">
-          <h4>🛒 Boutique — annonce</h4>
+      <!-- ---- Boutique ---- -->
+      <section id="viewShop" class="view">
+        <div class="stats-head"><h2>🛒 Boutique</h2></div>
+        <div class="setgrp">
           <p class="muted">Poste une annonce embed dans le salon boutique (⚙️).</p>
           <label class="setline">Titre <input type="text" id="shopTitle" maxlength="200" placeholder="Nouveau pack VIP disponible !" /></label>
           <textarea id="shopText" rows="3" placeholder="Détaille la nouveauté / la remise…"></textarea>
@@ -661,6 +677,11 @@
           <label class="setline">Texte du bouton <input type="text" id="shopLinkLabel" maxlength="60" placeholder="Ouvrir la boutique" /></label>
           <div class="mm-actions"><button id="shopSend" class="btn-accent" type="button">Publier l'annonce boutique</button><span id="shopStatus" class="who"></span></div>
         </div>
+      </section>
+
+      <!-- ---- Modération (recrutement + webhooks) ---- -->
+      <section id="viewMod" class="view">
+        <div class="stats-head"><h2>🛡️ Modération</h2></div>
 
         <div class="setgrp" id="modRecruit">
           <h4>🧑‍💼 Recrutement staff</h4>
