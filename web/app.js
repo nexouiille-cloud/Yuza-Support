@@ -70,6 +70,40 @@ function emptyState(icon, title, hint) {
 function skelRows(n, cls) {
   return Array.from({ length: n }, (_, i) => `<div class="skel-row ${cls || ''}" style="animation-delay:${i * 0.06}s"></div>`).join('');
 }
+const prefersReducedMotion = () =>
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function celebrate5Star() {
+  if (prefersReducedMotion()) { setStatus('⭐⭐⭐⭐⭐ note parfaite reçue !'); return; }
+  const box = document.createElement('div');
+  box.className = 'celebrate5';
+  const stars = ['⭐', '🌟', '✨'];
+  let inner = '';
+  for (let i = 0; i < 16; i++) {
+    const left = Math.random() * 100;
+    const delay = Math.random() * 0.4;
+    const dur = 1.6 + Math.random() * 0.8;
+    inner += `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${stars[i % stars.length]}</span>`;
+  }
+  box.innerHTML = inner;
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 2600);
+}
+function animateCount(el, target, duration) {
+  if (!el) return;
+  target = Number(target) || 0;
+  if (prefersReducedMotion()) { el.textContent = target; return; }
+  duration = duration || 650;
+  const from = Number(el.dataset.count) || 0;
+  const t0 = performance.now();
+  function step(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * eased);
+    if (p < 1) requestAnimationFrame(step);
+    else { el.textContent = target; el.dataset.count = target; }
+  }
+  requestAnimationFrame(step);
+}
 
 /* ---------------- thème ---------------- */
 function lighten(hex, amt) {
@@ -255,6 +289,10 @@ function showView(name) {
   $$('#rail .navbtn[data-view]').forEach((b) =>
     b.classList.toggle('active', b.dataset.view === name),
   );
+  if (NEW_BADGE_UNTIL[name]) {
+    markNewBadgeSeen(name);
+    $(`.navbtn[data-view="${name}"] .nb-new`)?.remove();
+  }
   if (name === 'home') renderHome();
   if (name === 'staff') {
     if (!presence.length && !teamRoster.length) $('#staffList').innerHTML = skelRows(4);
@@ -315,6 +353,39 @@ function showView(name) {
   if (name === 'patch') loadPatchNotes();
 }
 
+/* ---------------- badge "Nouveau" sur les onglets récemment ajoutés ---------------- */
+const NEW_BADGE_UNTIL = {
+  rankup: '2026-09-26', announce: '2026-09-26', sanctions: '2026-09-26',
+  panels: '2026-09-26', shop: '2026-09-26',
+};
+function newBadgeSeen() {
+  try { return JSON.parse(localStorage.getItem('volt_new_seen') || '[]'); } catch { return []; }
+}
+function markNewBadgeSeen(name) {
+  try {
+    const seen = new Set(newBadgeSeen());
+    seen.add(name);
+    localStorage.setItem('volt_new_seen', JSON.stringify([...seen]));
+  } catch {}
+}
+function applyNewBadges() {
+  const seen = new Set(newBadgeSeen());
+  const now = Date.now();
+  for (const [name, until] of Object.entries(NEW_BADGE_UNTIL)) {
+    const btn = document.querySelector(`.navbtn[data-view="${name}"]`);
+    if (!btn) continue;
+    const show = !seen.has(name) && now < new Date(until).getTime() && !btn.classList.contains('hidden');
+    let dot = btn.querySelector('.nb-new');
+    if (show && !dot) {
+      dot = document.createElement('span');
+      dot.className = 'nb-new';
+      btn.appendChild(dot);
+    } else if (!show && dot) {
+      dot.remove();
+    }
+  }
+}
+
 /* ---------------- permissions : affichage des onglets ---------------- */
 function applyPermsUI() {
   const anyMod = ['recruit', 'webhooks'].some((k) => perms[k]);
@@ -328,6 +399,7 @@ function applyPermsUI() {
   const cm = $('#cMacros');
   if (cm) cm.classList.toggle('hidden', settingsScope !== 'owner');
   $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
+  applyNewBadges();
 }
 
 /* ---------------- macros (réponses pré-écrites) ---------------- */
@@ -663,8 +735,8 @@ function renderHome() {
   }
   $('#hiName').textContent = myName || '—';
   $('#hiLevel').textContent = myLevelLabel || levelName(myLevel);
-  $('#cOpen').textContent = open;
-  $('#cUnassigned').textContent = unassigned;
+  animateCount($('#cOpen'), open);
+  animateCount($('#cUnassigned'), unassigned);
   $('#cOpenHint').textContent = unassigned
     ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
     : 'tout est pris en charge';
@@ -721,7 +793,7 @@ function renderHomeTop() {
         staffAvatarHtml(name, rank === 1 ? 64 : 50) +
         `<span class="ht-pname">${esc(name)}</span>` +
         (r ? `<span class="ht-prating">⭐ ${r.avg}</span>` : '') +
-        `<span class="ht-pn">${n}</span>` +
+        `<span class="ht-pn" data-target="${n}">0</span>` +
         `</div>`
       );
     })
@@ -735,7 +807,7 @@ function renderHomeTop() {
         staffAvatarHtml(name, 26) +
         `<span class="ht-name">${esc(name)}</span>` +
         (r ? `<span class="ht-rating">⭐ ${r.avg}</span>` : '') +
-        `<span class="ht-n">${n}</span>` +
+        `<span class="ht-n" data-target="${n}">0</span>` +
         `</div>`
       );
     })
@@ -744,6 +816,7 @@ function renderHomeTop() {
     `<div class="ht-head"><span>🏆 Top équipe</span><span class="muted">réponses · ${since}</span></div>` +
     `<div class="ht-podium">${podiumHtml}</div>` +
     (restHtml ? `<div class="ht-list">${restHtml}</div>` : '');
+  box.querySelectorAll('[data-target]').forEach((el) => animateCount(el, el.dataset.target));
 }
 
 /* ---------------- présence staff ---------------- */
@@ -1364,6 +1437,7 @@ function handle(m) {
       arr.push(m.message);
       msgCache.set(uid, arr);
       if (uid === current) renderMessages();
+      if (m.message.author === 'system' && /: 5\/5$/.test(m.message.content || '')) celebrate5Star();
       break;
     }
 
@@ -1666,7 +1740,7 @@ function ogBoxHtml(g, pos, isOwner) {
   );
 }
 
-function ogDrawArrows(posById) {
+function ogDrawArrows(posById, animate) {
   const svg = $('#ogArrows');
   let inner =
     '<defs><marker id="ogArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
@@ -1680,9 +1754,17 @@ function ogDrawArrows(posById) {
     const x2 = c.x + c.w / 2;
     const y2 = c.y;
     const midY = (y1 + y2) / 2;
-    inner += `<path d="M${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" stroke="var(--border-strong)" stroke-width="2" fill="none" marker-end="url(#ogArrow)"/>`;
+    inner += `<path class="og-arrow-path" d="M${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" stroke="var(--border-strong)" stroke-width="2" fill="none" marker-end="url(#ogArrow)"/>`;
   });
   svg.innerHTML = inner;
+  if (animate && !prefersReducedMotion()) {
+    svg.querySelectorAll('.og-arrow-path').forEach((path, i) => {
+      const len = Math.ceil(path.getTotalLength());
+      path.style.strokeDasharray = len;
+      path.style.setProperty('--og-len', len);
+      path.style.animation = `ogDraw 0.6s ${i * 0.1}s var(--ease) both`;
+    });
+  }
 }
 
 let ogDrag = null; // { id, startX, startY, boxStartX, boxStartY }
@@ -1745,7 +1827,7 @@ function ogAttachResize(handle, el, g) {
   handle.addEventListener('pointercancel', end);
 }
 
-function ogRedrawArrowsLive() {
+function ogRedrawArrowsLive(animate) {
   const posById = new Map();
   $('#ogCanvas').querySelectorAll('.og-box').forEach((el) => {
     posById.set(Number(el.dataset.id), {
@@ -1755,10 +1837,10 @@ function ogRedrawArrowsLive() {
       h: el.offsetHeight,
     });
   });
-  ogDrawArrows(posById);
+  ogDrawArrows(posById, animate);
 }
 
-function ogFitCanvas() {
+function ogFitCanvas(animate) {
   const canvas = $('#ogCanvas');
   let maxX = 900, maxY = 600;
   canvas.querySelectorAll('.og-box').forEach((el) => {
@@ -1770,7 +1852,7 @@ function ogFitCanvas() {
   $('#ogArrows').style.width = maxX + 'px';
   $('#ogArrows').style.height = maxY + 'px';
   $('#ogArrows').setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
-  ogRedrawArrowsLive();
+  ogRedrawArrowsLive(animate);
 }
 
 function renderOrgChart() {
@@ -1797,7 +1879,7 @@ function renderOrgChart() {
     el.querySelector('[data-og-edit]')?.addEventListener('click', () => ogEditGroup(g));
     el.querySelector('[data-og-del]')?.addEventListener('click', () => ogDeleteGroup(g.id, g.title));
   });
-  ogFitCanvas();
+  ogFitCanvas(true);
 }
 
 /* ---------------- changements de grades (rank up / rétrogradation) ---------------- */

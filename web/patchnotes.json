@@ -1,6 +1,27 @@
 [
   {
     "date": "2026-09-12",
+    "title": "Animations, interactions et espace mieux utilisé",
+    "items": [
+      "Badge « Nouveau » sur les onglets récemment ajoutés (disparaît une fois visité, ou après 2 semaines).",
+      "Tickets urgents/hauts mieux mis en avant : léger halo de couleur + pulsation douce.",
+      "Survol uniformisé sur toutes les listes (suggestions, sanctions, membres, webhooks, panneaux…) — même petit décalage partout.",
+      "Transition plus visible entre les onglets, chiffres des cartes d'accueil et du classement qui comptent en montant, ticket qui glisse à son arrivée dans la liste.",
+      "Petite pluie d'étoiles quand un client laisse la note maximale (5/5).",
+      "Les flèches de l'organigramme se dessinent progressivement plutôt que d'apparaître d'un coup.",
+      "Sanctions, membres du serveur, équipe en ligne et webhooks s'affichent maintenant en plusieurs colonnes sur grand écran au lieu de rester collés à gauche — l'espace vide à droite est exploité.",
+      "Zones de texte et listes de suggestions/signalements/convocations légèrement élargies pour mieux respirer."
+    ]
+  },
+  {
+    "date": "2026-09-12",
+    "title": "Logo aux coins arrondis",
+    "items": [
+      "Le logo est maintenant affiché avec des coins arrondis (écran de connexion, barre latérale, animation d'entrée, guide de bienvenue) — style icône d'appli."
+    ]
+  },
+  {
+    "date": "2026-09-12",
     "title": "Polish visuel : espaces vides, chargement, textures",
     "items": [
       "Les écrans (Sanctions, Suggestions, Signalements, Journal d'activité, liste de tickets, Équipe…) ont maintenant un vrai état vide (icône + message), plus joli qu'un simple texte gris perdu dans le vide.",
