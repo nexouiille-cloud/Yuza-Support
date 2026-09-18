@@ -473,10 +473,23 @@ export async function getStaffMember(userId) {
     const member = await guild.members.fetch(userId);
     const roleIds = [...member.roles.cache.keys()];
     const isStaff = roleIds.some((id) => config.staffRoleIds.includes(id));
-    // rôle Discord le plus haut (hors @everyone) — affiché dans le site
-    const topRole = [...member.roles.cache.values()]
-      .filter((r) => r.name !== '@everyone')
-      .sort((a, b) => b.position - a.position)[0];
+    // rôle affiché : le tier staff (STAFF_TIERS) le plus haut qu'il possède réellement —
+    // pas juste "le rôle le plus haut dans Discord", qui peut être un séparateur décoratif
+    // (souvent nommé "." ou "———") positionné au-dessus par erreur dans la hiérarchie.
+    let topRole = null;
+    for (let i = config.staffTiers.length - 1; i >= 0; i--) {
+      const tier = config.staffTiers[i];
+      if (roleIds.includes(tier.roleId)) {
+        topRole = member.roles.cache.get(tier.roleId);
+        break;
+      }
+    }
+    if (!topRole) {
+      // secours (pas de tier STAFF_TIERS reconnu) : ancien comportement
+      topRole = [...member.roles.cache.values()]
+        .filter((r) => r.name !== '@everyone')
+        .sort((a, b) => b.position - a.position)[0];
+    }
     const roleName = topRole ? topRole.name : null;
     if (!isStaff) {
       console.log(`[auth] ${member.user.tag} : aucun rôle staff détecté`);
