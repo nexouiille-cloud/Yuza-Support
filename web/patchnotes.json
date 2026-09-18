@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-09-19",
+    "title": "Cartes d'accueil réorganisables, barre latérale défilable, sécurité",
+    "items": [
+      "Cartes de l'accueil réorganisables : bouton « ↕️ Réorganiser » pour les glisser dans l'ordre que tu veux, ou en masquer certaines — réglage personnel, gardé sur ton navigateur.",
+      "Barre latérale (icônes de gauche) : elle défile maintenant si elle ne tient pas entièrement sur ton écran, au lieu de couper les dernières icônes.",
+      "Fond de l'interface légèrement animé (mouvement très lent, discret).",
+      "Sécurité : déconnexion automatique après 1h sans la moindre activité (souris/clavier) — utile sur un poste partagé, avec un petit message d'avertissement 2 minutes avant."
+    ]
+  },
+  {
     "date": "2026-09-12",
     "title": "Salon au choix, corrections membres, Réglages sur 2 colonnes",
     "items": [

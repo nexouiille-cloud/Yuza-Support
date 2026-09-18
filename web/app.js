@@ -709,8 +709,115 @@ $$('#rail .navbtn[data-view]').forEach((b) =>
 
 $('#presence').addEventListener('click', () => showView('staff'));
 
+/* ---------------- cartes d'accueil réorganisables (par staff, perso) ---------------- */
+let cardsEditMode = false;
+
+function loadCardOrder() {
+  try { return JSON.parse(localStorage.getItem('volt_card_order') || 'null'); } catch { return null; }
+}
+function saveCardOrder(ids) {
+  try { localStorage.setItem('volt_card_order', JSON.stringify(ids)); } catch {}
+}
+function loadHiddenCards() {
+  try { return new Set(JSON.parse(localStorage.getItem('volt_card_hidden') || '[]')); } catch { return new Set(); }
+}
+function saveHiddenCards(set) {
+  try { localStorage.setItem('volt_card_hidden', JSON.stringify([...set])); } catch {}
+}
+let hiddenCardIds = loadHiddenCards();
+
+function applyCardLayout() {
+  const box = $('#homeCards');
+  const cards = Array.from(box.querySelectorAll('.card[data-card-id]'));
+  const order = loadCardOrder();
+  if (order && order.length) {
+    const byId = new Map(cards.map((c) => [c.dataset.cardId, c]));
+    order.forEach((id) => { const c = byId.get(id); if (c) box.appendChild(c); });
+    // toute carte connue mais absente de l'ordre sauvegardé (ex : ajoutée depuis) va à la fin
+    cards.forEach((c) => { if (!order.includes(c.dataset.cardId)) box.appendChild(c); });
+  }
+  cards.forEach((c) => {
+    c.classList.toggle('card-user-hidden', hiddenCardIds.has(c.dataset.cardId) && !cardsEditMode);
+  });
+  renderHiddenTray();
+}
+
+function renderHiddenTray() {
+  const tray = $('#cardsHiddenTray');
+  if (!cardsEditMode || !hiddenCardIds.size) {
+    tray.classList.add('hidden');
+    tray.innerHTML = '';
+    return;
+  }
+  tray.classList.remove('hidden');
+  tray.innerHTML =
+    '<span class="muted">Masquées :</span> ' +
+    [...hiddenCardIds]
+      .map((id) => {
+        const card = $(`.card[data-card-id="${id}"]`);
+        const label = card ? card.querySelector('.lbl').textContent : id;
+        return `<button type="button" class="card-restore" data-id="${id}">+ ${esc(label)}</button>`;
+      })
+      .join('');
+  tray.querySelectorAll('.card-restore').forEach((b) =>
+    b.addEventListener('click', () => {
+      hiddenCardIds.delete(b.dataset.id);
+      saveHiddenCards(hiddenCardIds);
+      applyCardLayout();
+    }),
+  );
+}
+
+$('#cardsEditBtn').addEventListener('click', () => {
+  cardsEditMode = !cardsEditMode;
+  $('#homeCards').classList.toggle('cards-editing', cardsEditMode);
+  $('#cardsEditBtn').textContent = cardsEditMode ? '✓ Terminer' : '↕️ Réorganiser les cartes';
+  applyCardLayout();
+});
+
+Array.from(document.querySelectorAll('.card[data-card-id]')).forEach((c) => {
+  c.setAttribute('draggable', 'false');
+  c.addEventListener('dragstart', (e) => {
+    if (!cardsEditMode) return e.preventDefault();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', c.dataset.cardId);
+    c.classList.add('card-dragging');
+  });
+  c.addEventListener('dragend', () => c.classList.remove('card-dragging'));
+  c.addEventListener('dragover', (e) => {
+    if (!cardsEditMode) return;
+    e.preventDefault();
+    const box = $('#homeCards');
+    const dragging = box.querySelector('.card-dragging');
+    if (!dragging || dragging === c) return;
+    const cards = Array.from(box.querySelectorAll('.card[data-card-id]'));
+    const from = cards.indexOf(dragging);
+    const to = cards.indexOf(c);
+    if (from < to) c.after(dragging); else c.before(dragging);
+  });
+  c.addEventListener('drop', (e) => e.preventDefault());
+  const handle = c.querySelector('.card-drag');
+  if (handle) {
+    handle.addEventListener('pointerdown', () => { if (cardsEditMode) c.setAttribute('draggable', 'true'); });
+  }
+  c.querySelector('.card-hide')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hiddenCardIds.add(c.dataset.cardId);
+    saveHiddenCards(hiddenCardIds);
+    applyCardLayout();
+  });
+});
+
+$('#homeCards').addEventListener('dragend', () => {
+  const ids = Array.from($('#homeCards').querySelectorAll('.card[data-card-id]')).map((c) => c.dataset.cardId);
+  saveCardOrder(ids);
+});
+
+applyCardLayout();
+
 $$('.card[data-go]').forEach((c) =>
-  c.addEventListener('click', () => {
+  c.addEventListener('click', (e) => {
+    if (cardsEditMode || e.target.closest('.card-hide') || e.target.closest('.card-drag')) return;
     const go = c.dataset.go;
     if (go === 'unassigned') {
       $$('#filters button').forEach((x) =>
@@ -3081,10 +3188,17 @@ $('#myStatus').addEventListener('change', (e) => {
     { passive: true },
   ),
 );
+const AUTO_LOGOUT_MS = 60 * 60000; // 1h sans la moindre activité -> déconnexion auto (sécurité, poste partagé/public)
 setInterval(() => {
   const now = Date.now();
   const nextIdle = now - lastActive > 600000; // 10 min sans activité
   if (nextIdle !== idle) { idle = nextIdle; pushStatus(); }
+  const inactiveMs = now - lastActive;
+  if (inactiveMs > AUTO_LOGOUT_MS) {
+    location.href = '/auth/logout';
+  } else if (inactiveMs > AUTO_LOGOUT_MS - 120000) {
+    setStatus('⏳ Déconnexion automatique dans moins de 2 min par inactivité — bouge la souris pour rester connecté.');
+  }
 }, 30000);
 
 // Ctrl+V d'une image n'importe où quand un ticket est ouvert

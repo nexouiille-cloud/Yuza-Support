@@ -173,38 +173,56 @@
         <div id="homeReq" class="hidden"></div>
         <div id="presence" class="hidden"></div>
         <input id="memberSearch" type="search" placeholder="🔍  Fiche membre — pseudo ou ID Discord, puis Entrée" autocomplete="off" />
-        <div class="cards">
-          <button class="card" data-go="tickets">
+        <div class="cards-bar">
+          <button id="cardsEditBtn" class="linkbtn" type="button">↕️ Réorganiser les cartes</button>
+          <div id="cardsHiddenTray" class="hidden"></div>
+        </div>
+        <div class="cards" id="homeCards">
+          <button class="card" data-go="tickets" data-card-id="tickets">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">🎫</div>
             <div><div class="big" id="cOpen">0</div><div class="lbl">Tickets ouverts</div>
                  <div class="hint" id="cOpenHint">—</div></div>
           </button>
-          <button class="card" data-go="unassigned">
+          <button class="card" data-go="unassigned" data-card-id="unassigned">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">🖐️</div>
             <div><div class="big" id="cUnassigned">0</div><div class="lbl">Non assignés</div>
                  <div class="hint">à prendre en charge</div></div>
           </button>
-          <button class="card" data-go="stats">
+          <button class="card" data-go="stats" data-card-id="stats">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">📊</div>
             <div><div class="lbl">Statistiques</div>
                  <div class="hint">activité, temps de réponse, charge par staff…</div></div>
           </button>
-          <button class="card" data-go="staff">
+          <button class="card" data-go="staff" data-card-id="staff">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">👥</div>
             <div><div class="lbl">Équipe en ligne</div>
                  <div class="hint" id="cStaffHint">qui est connecté</div></div>
           </button>
-          <button class="card" data-go="members">
+          <button class="card" data-go="members" data-card-id="members">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">📇</div>
             <div><div class="lbl">Membres du serveur</div>
                  <div class="hint">annuaire + envoi de MP</div></div>
           </button>
-          <button class="card" data-go="suggest">
+          <button class="card" data-go="suggest" data-card-id="suggest">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">💡</div>
             <div><div class="lbl">Suggestions</div>
                  <div class="hint">proposer une amélioration</div></div>
           </button>
-          <button class="card" data-go="settings" id="cMacros">
+          <button class="card" data-go="settings" id="cMacros" data-card-id="macros">
+            <span class="card-drag" title="Glisser pour réordonner">⠿</span>
+            <span class="card-hide" role="button" tabindex="0" title="Masquer cette carte">✕</span>
             <div class="ico">⚡</div>
             <div><div class="lbl">Macros</div><div class="hint">réponses pré-écrites — bouton ⚡ dans un ticket</div></div>
           </button>
