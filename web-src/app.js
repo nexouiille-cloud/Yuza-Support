@@ -130,6 +130,15 @@ function revealOnScroll(container) {
   container.querySelectorAll('.reveal:not(.in)').forEach((el) => revealObserver.observe(el));
 }
 
+/* ---------------- titre qui se révèle en glitch (changement de vue) ---------------- */
+function playTitleGlitch(el) {
+  if (!el || prefersReducedMotion()) return;
+  el.dataset.text = el.textContent;
+  el.classList.remove('glitch-play');
+  void el.offsetWidth; // force le navigateur à relire le DOM avant de rejouer l'animation
+  el.classList.add('glitch-play');
+}
+
 /* ---------------- thème ---------------- */
 function lighten(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
@@ -311,6 +320,7 @@ function showView(name) {
     history.replaceState(null, '', '#' + name); // lien copiable qui rouvre cette section
   }
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
+  playTitleGlitch(document.querySelector(`#${id} h2`));
   $$('#rail .navbtn[data-view]').forEach((b) =>
     b.classList.toggle('active', b.dataset.view === name),
   );
@@ -841,6 +851,22 @@ $('#homeCards').addEventListener('dragend', () => {
 });
 
 applyCardLayout();
+
+// tilt 3D léger + reflet qui suit la souris sur les cartes de l'accueil
+if (!prefersReducedMotion()) {
+  Array.from(document.querySelectorAll('.card:not(.soon)')).forEach((c) => {
+    c.addEventListener('mousemove', (e) => {
+      if (cardsEditMode) return;
+      const r = c.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      c.style.transform = `translateY(-5px) perspective(700px) rotateX(${(py - 0.5) * -6}deg) rotateY(${(px - 0.5) * 6}deg)`;
+      c.style.setProperty('--mx', px * 100 + '%');
+      c.style.setProperty('--my', py * 100 + '%');
+    });
+    c.addEventListener('mouseleave', () => { c.style.transform = ''; });
+  });
+}
 
 $$('.card[data-go]').forEach((c) =>
   c.addEventListener('click', (e) => {
@@ -3252,6 +3278,18 @@ if (!prefersReducedMotion()) {
     });
     btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
   });
+}
+
+/* ---------------- décor (planète) : suit très légèrement la souris ---------------- */
+if (!prefersReducedMotion()) {
+  const deco = $('.space-deco');
+  if (deco) {
+    document.addEventListener('mousemove', (e) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * -22;
+      const y = (e.clientY / window.innerHeight - 0.5) * -22;
+      deco.style.transform = `translate(${x}px, ${y}px)`;
+    });
+  }
 }
 
 // Ctrl+V d'une image n'importe où quand un ticket est ouvert

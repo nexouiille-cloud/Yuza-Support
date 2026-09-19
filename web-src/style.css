@@ -49,10 +49,24 @@ body::before {
 }
 @media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
 
+/* ---------- grain filmique animé (remplace le fond à points) ---------- */
+body::after {
+  content: "";
+  position: fixed; inset: -120px; z-index: 0; pointer-events: none; opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grainMove 1s steps(6) infinite;
+}
+@keyframes grainMove {
+  0% { transform: translate(0, 0); } 16% { transform: translate(-3%, 2%); } 33% { transform: translate(2%, -4%); }
+  50% { transform: translate(-4%, -2%); } 66% { transform: translate(3%, 3%); } 83% { transform: translate(-2%, 4%); } 100% { transform: translate(0, 0); }
+}
+@media (prefers-reduced-motion: reduce) { body::after { animation: none; } }
+
 /* ---------- décoration espace : planète + halo ---------- */
 .space-deco {
   position: fixed; top: -70px; right: -60px; z-index: 0; pointer-events: none;
   width: 380px; height: 380px;
+  transition: transform 0.35s var(--ease);
 }
 .saturn {
   position: absolute; top: 50%; left: 50%; width: 150px; height: 150px;
@@ -121,6 +135,14 @@ button:disabled { opacity: 0.45; cursor: default; }
   transform: skewX(-18deg); transition: left 0.5s var(--ease);
 }
 .btn-accent:hover::after { left: 130%; }
+.btn-accent::before {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; z-index: 1;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: skewX(-18deg);
+  animation: idleShine 5s ease-in-out infinite;
+}
+@keyframes idleShine { 0%, 80% { left: -60%; } 95%, 100% { left: 130%; } }
+@media (prefers-reduced-motion: reduce) { .btn-accent::before { animation: none; display: none; } }
 
 .hidden { display: none !important; }
 
@@ -382,6 +404,15 @@ button:disabled { opacity: 0.45; cursor: default; }
   opacity: 0; transition: opacity 0.25s;
 }
 .card:not(.soon):hover::before { opacity: 1; }
+.card {
+  transform-style: preserve-3d; will-change: transform;
+}
+.card::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: 0;
+  background: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), rgba(255, 255, 255, 0.10), transparent 60%);
+  transition: opacity 0.2s;
+}
+.card:not(.soon):hover::after { opacity: 1; }
 .card .ico { font-size: 24px; }
 .card .big { font-family: "Chakra Petch", sans-serif; font-size: 30px; line-height: 1; }
 .card .lbl { font-weight: 600; margin-top: 6px; }
@@ -767,8 +798,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* ---------- vue stats ---------- */
 #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport, #viewConvoke, #viewBanners, #viewActivity, #viewOrgchart, #viewRankup, #viewAnnounce, #viewSanctions, #viewPanels, #viewShop {
   overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px);
-  background-image: radial-gradient(var(--border) 1px, transparent 1px);
-  background-size: 28px 28px; background-position: -6px -6px;
 }
 #sugText { width: 100%; max-width: 700px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
 #sugText:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--glow-soft); }
@@ -935,6 +964,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.5s var(--ease), transform 0.5s var(--ease); }
 .reveal.in { opacity: 1; transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+
+/* ---------- titre de vue : glitch RGB au changement ---------- */
+h2.glitch-play { position: relative; }
+h2.glitch-play::before, h2.glitch-play::after {
+  content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  overflow: hidden; pointer-events: none;
+}
+h2.glitch-play::before { color: #4dd0ff; clip-path: inset(0 0 60% 0); animation: glitchTop 0.5s var(--ease) 1; }
+h2.glitch-play::after { color: #ff4d6a; clip-path: inset(60% 0 0 0); animation: glitchBot 0.5s var(--ease) 1; }
+@keyframes glitchTop { 0% { opacity: 1; transform: translate(-6px, -2px); } 40% { opacity: .8; transform: translate(4px, -1px); } 100% { opacity: 0; transform: translate(0, 0); } }
+@keyframes glitchBot { 0% { opacity: 1; transform: translate(6px, 2px); } 40% { opacity: .8; transform: translate(-4px, 1px); } 100% { opacity: 0; transform: translate(0, 0); } }
+@media (prefers-reduced-motion: reduce) { h2.glitch-play::before, h2.glitch-play::after { display: none; } }
 
 /* ---------- barre de statut ---------- */
 #status {
