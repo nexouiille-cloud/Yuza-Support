@@ -105,6 +105,31 @@ function animateCount(el, target, duration) {
   requestAnimationFrame(step);
 }
 
+/* ---------------- apparition en fondu au scroll (listes) ---------------- */
+let revealObserver = null;
+function revealOnScroll(container) {
+  if (!container) return;
+  if (prefersReducedMotion()) {
+    container.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
+    return;
+  }
+  if (!revealObserver) {
+    revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          e.target.classList.add('in');
+          revealObserver.unobserve(e.target);
+          const counter = e.target.querySelector('[data-count-target]');
+          if (counter) animateCount(counter, counter.dataset.countTarget, 900);
+        });
+      },
+      { threshold: 0.15 },
+    );
+  }
+  container.querySelectorAll('.reveal:not(.in)').forEach((el) => revealObserver.observe(el));
+}
+
 /* ---------------- thème ---------------- */
 function lighten(hex, amt) {
   const n = parseInt(hex.slice(1), 16);
@@ -617,7 +642,7 @@ function renderMembersView(m) {
   box.innerHTML = '';
   for (const mem of m.members) {
     const el = document.createElement('div');
-    el.className = 'member-item';
+    el.className = 'member-item reveal';
     el.innerHTML =
       `<div class="mi-main"><span class="mi-name">${esc(mem.name)}</span> ` +
       `<span class="mi-tag">@${esc(mem.tag)}</span>` +
@@ -636,6 +661,7 @@ function renderMembersView(m) {
     });
     box.appendChild(el);
   }
+  revealOnScroll(box);
 }
 let memSearchTimer = null;
 $('#memSearch').addEventListener('input', (e) => {
@@ -686,14 +712,14 @@ function renderStaffView() {
       if (s.online) {
         const st = statusOf(s);
         return (
-          `<div class="staff-item"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
+          `<div class="staff-item reveal"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
           `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}` +
           `<span class="sst">${ST_LABEL[st]}</span></span>` +
           `<span class="srole">${esc(s.roleName || levelName(s.level))}</span></div>`
         );
       }
       return (
-        `<div class="staff-item offline"><span class="sdot st-offline" title="Pas là"></span>` +
+        `<div class="staff-item offline reveal"><span class="sdot st-offline" title="Pas là"></span>` +
         `<span class="sname">${esc(s.name)}` +
         `<span class="sst">pas là${s.lastAt ? ' · vu ' + ago(s.lastAt) : ''}</span></span>` +
         (s.roleName ? `<span class="srole">${esc(s.roleName)}</span>` : '') +
@@ -701,6 +727,7 @@ function renderStaffView() {
       );
     })
     .join('');
+  revealOnScroll(box);
 }
 
 $$('#rail .navbtn[data-view]').forEach((b) =>
@@ -1656,7 +1683,7 @@ function renderActivity() {
         : '';
       const det = a.detail ? `<span class="act-det">${esc(a.detail)}</span>` : '';
       return (
-        `<div class="act-row">` +
+        `<div class="act-row reveal">` +
         `<span class="act-ico">${m.icon}</span>` +
         `<div class="act-main">` +
         `<div class="act-line"><b>${esc(a.actor_name)}</b> ${esc(m.label)} ${tk}</div>` +
@@ -1667,6 +1694,7 @@ function renderActivity() {
       );
     })
     .join('');
+  revealOnScroll(box);
   box.querySelectorAll('.act-tk').forEach((b) => {
     b.addEventListener('click', () => {
       const uid = b.dataset.uid;
@@ -2122,7 +2150,10 @@ function rowBar(label, val, max) {
 }
 
 function renderStats(s) {
-  const kpi = (l, v) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const kpi = (l, v, count) =>
+    `<div class="kpi reveal">` +
+    (count != null ? `<div class="v" data-count-target="${count}">0</div>` : `<div class="v">${v}</div>`) +
+    `<div class="l">${l}</div></div>`;
   const maxDay = Math.max(1, ...s.perDay.map((d) => d.count));
   const bars = s.perDay
     .map(
@@ -2157,8 +2188,8 @@ function renderStats(s) {
     : '<div class="muted">Aucune note pour l\'instant.</div>';
 
   $('#statsBody').innerHTML =
-    `<div class="kpis">${kpi('Total', s.total)}${kpi('Ouverts', s.open)}` +
-    `${kpi('Clôturés', s.closed)}${kpi('Non assignés', s.unassigned)}` +
+    `<div class="kpis">${kpi('Total', s.total, s.total)}${kpi('Ouverts', s.open, s.open)}` +
+    `${kpi('Clôturés', s.closed, s.closed)}${kpi('Non assignés', s.unassigned, s.unassigned)}` +
     `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}` +
     `${kpi('Satisfaction', s.avgRating != null ? s.avgRating + '/5' : '—')}</div>` +
     `<h4>Charge actuelle par staff (tickets ouverts assignés)</h4>${wlRows}` +
@@ -2166,6 +2197,7 @@ function renderStats(s) {
     `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
     `<h4>Par catégorie</h4>${catRows}` +
     `<h4>Réponses par staff (total)</h4>${staffRows}`;
+  revealOnScroll($('#statsBody'));
 }
 
 $('#statsClose').addEventListener('click', () => showView('home'));
@@ -2207,6 +2239,13 @@ $('#advPriority').addEventListener('change', (e) => {
   advPriority = e.target.value;
   renderSidebar();
 });
+
+/* ---------------- en-tête du ticket qui se compacte au scroll ---------------- */
+$('#msgs').addEventListener(
+  'scroll',
+  () => $('#head').classList.toggle('compact', $('#msgs').scrollTop > 24),
+  { passive: true },
+);
 
 /* ---------------- vue ticket ---------------- */
 function closeTicketView() {
@@ -2827,7 +2866,7 @@ function renderSanctions(list) {
     .map((s) => {
       const c = counts[s.targetId] || 0;
       return (
-        `<div class="sanc-item${s.active ? '' : ' off'}${c >= 3 && s.active ? ' banned' : ''}">` +
+        `<div class="sanc-item reveal${s.active ? '' : ' off'}${c >= 3 && s.active ? ' banned' : ''}">` +
         `<div class="si-main"><strong>${esc(s.targetName)}</strong> ` +
         `<span class="si-count">${c}/3</span>` +
         `<div class="si-by">${esc(s.reason || 'sans raison')} — par ${esc(s.byName)} · ${new Date(s.at).toLocaleString('fr-FR')}</div></div>` +
@@ -2838,6 +2877,7 @@ function renderSanctions(list) {
       );
     })
     .join('');
+  revealOnScroll(box);
   box.querySelectorAll('.sc-del').forEach((b) =>
     b.addEventListener('click', () =>
       ws.send(JSON.stringify({ type: 'sanction_del', id: Number(b.dataset.id) })),
@@ -3200,6 +3240,19 @@ setInterval(() => {
     setStatus('⏳ Déconnexion automatique dans moins de 2 min par inactivité — bouge la souris pour rester connecté.');
   }
 }, 30000);
+
+/* ---------------- effet magnétique sur les boutons d'action principaux ---------------- */
+if (!prefersReducedMotion()) {
+  document.querySelectorAll('.btn-accent').forEach((btn) => {
+    btn.addEventListener('mousemove', (e) => {
+      const r = btn.getBoundingClientRect();
+      const x = e.clientX - r.left - r.width / 2;
+      const y = e.clientY - r.top - r.height / 2;
+      btn.style.transform = `translate(${x * 0.22}px, ${y * 0.22}px)`;
+    });
+    btn.addEventListener('mouseleave', () => { btn.style.transform = ''; });
+  });
+}
 
 // Ctrl+V d'une image n'importe où quand un ticket est ouvert
 document.addEventListener('paste', (e) => {
