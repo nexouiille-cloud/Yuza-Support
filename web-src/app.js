@@ -1,0 +1,3430 @@
+let ws = null;
+let current = null;
+let hashOpened = false; // pour n'ouvrir la section indiquée dans le lien (#moderation…) qu'une fois, au 1er hello
+
+const tickets = new Map(); // userId -> ticket
+const msgCache = new Map(); // userId -> [messages]
+
+let filterMode = 'open';        // 'open' | 'closed' | 'all' | 'towait' | 'unassigned'
+let advAssignee = '';
+let advPriority = '';
+let searchQuery = '';
+let searchIds = null;
+let categories = [];
+const collapsedGroups = new Set();
+const NONE = '__none__';
+
+let myId = null;
+let myName = '';
+let myLevelLabel = '';
+let myLevel = 1;
+let tiers = [];
+let maxLvl = 1;
+const blacklist = new Set();
+let vapidPublic = '';
+let staffOnly = false; // vue "staff seulement" dans la conversation
+let presence = []; // staff en ligne
+let myRoles = []; // mes rôles Discord (IDs)
+let myRoleName = ''; // mon rôle Discord (nom, affiché)
+let canModerate = false; // owner ou grade max : liste des signalements
+let perms = {}; // { announce, recruit, banners, sanctions, shop, webhooks, panels } -> booléens
+let macros = []; // [{name, text}] réponses pré-écrites
+let lastStats = null; // dernières stats reçues (pour le classement sur l'accueil)
+let activity = []; // journal d'activité (qui a fait quoi)
+let actFilter = 'all'; // filtre courant du journal
+let orgChart = []; // organigramme : liste ordonnée de rangs {id,title,description,members:[...]}
+let ogMembers = []; // membres du rang en cours d'édition dans le formulaire
+let ogEditId = null; // id du rang en cours d'édition (null = ajout)
+let assignRoles = []; // rôles demandables : [{name, roleId}]
+let slaMin = 15; // seuil d'alerte SLA (minutes)
+
+// signature — merci de la laisser
+console.log(
+  '%cVolt Support%c — développé par Yuza',
+  'color:#ff9d00;font-weight:700;font-size:14px',
+  'color:#9d968d',
+);
+
+const levelName = (L) => (L <= 1 ? 'Support' : tiers[L - 2] || `Niveau ${L}`);
+const PRI = { urgent: 0, high: 1, normal: 2, low: 3 };
+const ticketLabel = (t) => (t.title ? t.title : t.username);
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+
+function setStatus(s) { $('#statusText').textContent = s; }
+
+/* ---------------- états vides / chargement (réutilisés partout) ---------------- */
+function emptyState(icon, title, hint) {
+  return (
+    `<div class="empty-state"><div class="es-ico">${icon}</div>` +
+    `<div class="es-title">${esc(title)}</div>` +
+    (hint ? `<div class="es-hint">${esc(hint)}</div>` : '') +
+    `</div>`
+  );
+}
+function skelRows(n, cls) {
+  return Array.from({ length: n }, (_, i) => `<div class="skel-row ${cls || ''}" style="animation-delay:${i * 0.06}s"></div>`).join('');
+}
+const prefersReducedMotion = () =>
+  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function celebrate5Star() {
+  if (prefersReducedMotion()) { setStatus('⭐⭐⭐⭐⭐ note parfaite reçue !'); return; }
+  const box = document.createElement('div');
+  box.className = 'celebrate5';
+  const stars = ['⭐', '🌟', '✨'];
+  let inner = '';
+  for (let i = 0; i < 16; i++) {
+    const left = Math.random() * 100;
+    const delay = Math.random() * 0.4;
+    const dur = 1.6 + Math.random() * 0.8;
+    inner += `<span style="left:${left}%;animation-delay:${delay}s;animation-duration:${dur}s">${stars[i % stars.length]}</span>`;
+  }
+  box.innerHTML = inner;
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 2600);
+}
+function animateCount(el, target, duration) {
+  if (!el) return;
+  target = Number(target) || 0;
+  if (prefersReducedMotion()) { el.textContent = target; return; }
+  duration = duration || 650;
+  const from = Number(el.dataset.count) || 0;
+  const t0 = performance.now();
+  function step(now) {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(from + (target - from) * eased);
+    if (p < 1) requestAnimationFrame(step);
+    else { el.textContent = target; el.dataset.count = target; }
+  }
+  requestAnimationFrame(step);
+}
+
+/* ---------------- thème ---------------- */
+function lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.max(0, (n >> 16) + amt));
+  const g = Math.min(255, Math.max(0, ((n >> 8) & 255) + amt));
+  const b = Math.min(255, Math.max(0, (n & 255) + amt));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+const isHex = (s) => /^#[0-9a-f]{6}$/i.test(s || '');
+
+// Presets d'apparence personnelle : jeux de tokens complets appliqués par-dessus le thème serveur.
+const PRESET_KEYS = [
+  '--bg', '--bg-2', '--surface', '--surface-2', '--surface-3',
+  '--border', '--border-strong', '--text', '--text-dim', '--text-faint', '--shadow',
+];
+const PRESETS = {
+  nuit: {
+    '--bg': '#050506', '--bg-2': '#0a0a0b', '--surface': '#111113',
+    '--surface-2': '#17171a', '--surface-3': '#1f1f23', '--border': '#26262b',
+    '--border-strong': '#37373e', '--text': '#f4f4f5', '--text-dim': '#a1a1aa',
+    '--text-faint': '#6b6b73', '--shadow': '0 12px 40px -10px rgba(0,0,0,0.7)',
+  },
+  ardoise: {
+    '--bg': '#0d1117', '--bg-2': '#111722', '--surface': '#161d2b',
+    '--surface-2': '#1c2536', '--surface-3': '#243044', '--border': '#2b3648',
+    '--border-strong': '#3b4a63', '--text': '#e8edf5', '--text-dim': '#9aa8bd',
+    '--text-faint': '#66738a', '--shadow': '0 12px 40px -12px rgba(0,0,0,0.55)',
+  },
+  clair: {
+    '--bg': '#f4f5f7', '--bg-2': '#eceef2', '--surface': '#ffffff',
+    '--surface-2': '#f6f7f9', '--surface-3': '#eef0f3', '--border': '#dfe3e9',
+    '--border-strong': '#c6ccd5', '--text': '#1b1e24', '--text-dim': '#5b626c',
+    '--text-faint': '#8b929c', '--shadow': '0 14px 40px -14px rgba(20,24,31,0.20)',
+  },
+};
+
+let appName = 'Volt Support';
+let serverTheme = { appName: 'Volt Support', accent: '#ff9d00', bg: '#0a0a0c' };
+let myPref = loadPref(); // { preset, accent } | null
+
+function loadPref() {
+  try {
+    const p = JSON.parse(localStorage.getItem('volt_pref') || 'null');
+    if (p && (PRESETS[p.preset] || isHex(p.accent))) return p;
+  } catch {}
+  return null;
+}
+function savePref() {
+  try {
+    if (myPref) localStorage.setItem('volt_pref', JSON.stringify(myPref));
+    else localStorage.removeItem('volt_pref');
+  } catch {}
+}
+
+function setAccentVars(hex) {
+  if (!isHex(hex)) return;
+  const r = document.documentElement.style;
+  r.setProperty('--accent', hex);
+  r.setProperty('--accent-bright', lighten(hex, 30));
+  r.setProperty('--accent-deep', lighten(hex, -40));
+  r.setProperty('--glow', hex + '59');
+  r.setProperty('--glow-soft', hex + '24');
+}
+function setBgVars(hex) {
+  if (!isHex(hex)) return;
+  const r = document.documentElement.style;
+  r.setProperty('--bg', hex);
+  r.setProperty('--bg-2', lighten(hex, 4));
+}
+function applyAppName(name) {
+  if (!name) return;
+  appName = name;
+  document.title = appName;
+  const parts = name.split(' ');
+  const last = parts.pop();
+  const h1 = $('#login h1');
+  if (h1)
+    h1.innerHTML = parts.length
+      ? `${esc(parts.join(' '))} <span class="accent">${esc(last)}</span>`
+      : `<span class="accent">${esc(last)}</span>`;
+}
+
+// applique le thème serveur puis, par-dessus, l'apparence perso de ce staff
+function renderAppearance() {
+  const r = document.documentElement.style;
+  const preset = myPref && PRESETS[myPref.preset] ? myPref.preset : null;
+
+  if (preset) {
+    document.documentElement.dataset.appearance = preset;
+    for (const [k, v] of Object.entries(PRESETS[preset])) r.setProperty(k, v);
+  } else {
+    delete document.documentElement.dataset.appearance;
+    for (const k of PRESET_KEYS) r.removeProperty(k);
+    setBgVars(serverTheme.bg);
+  }
+  setAccentVars((myPref && myPref.accent) || serverTheme.accent);
+  applyAppName(serverTheme.appName);
+}
+
+// reçoit le thème serveur (owner) ; l'apparence perso reste prioritaire
+function applyTheme(t) {
+  if (!t) return;
+  serverTheme = {
+    appName: t.appName || serverTheme.appName,
+    accent: isHex(t.accent) ? t.accent : serverTheme.accent,
+    bg: isHex(t.bg) ? t.bg : serverTheme.bg,
+  };
+  renderAppearance();
+}
+
+renderAppearance(); // applique tout de suite ce qui est en localStorage (évite le flash)
+(async () => {
+  try {
+    const r = await fetch('/api/theme');
+    if (r.ok) applyTheme(await r.json());
+  } catch {}
+})();
+
+function setConn(state) {
+  const d = $('#connDot');
+  d.className = 'dot' + (state === 'ok' ? ' ok' : state === 'bad' ? ' bad' : '');
+}
+
+function updateTitle() {
+  let n = 0;
+  for (const t of tickets.values()) n += t.unread || 0;
+  document.title = (n ? `(${n}) ` : '') + appName;
+}
+
+/* ---------------- navigation entre vues ---------------- */
+const SVG_LOGO =
+  "<svg class='brand' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'>" +
+  "<defs><linearGradient id='vg' x1='0' y1='0' x2='1' y2='1'>" +
+  "<stop offset='0' stop-color='#ffbb3d'/><stop offset='1' stop-color='#c96f00'/></linearGradient></defs>" +
+  "<rect x='6' y='6' width='88' height='88' rx='22' fill='#141317' stroke='url(#vg)' stroke-width='2.5'/>" +
+  "<text x='50' y='64' text-anchor='middle' font-family=\"'Chakra Petch',sans-serif\" " +
+  "font-weight='700' font-size='40' fill='#f3f1ee'>VH</text>" +
+  "<path d='M56 12 L33 53 L46 53 L41 88 L69 43 L54 43 Z' fill='url(#vg)' " +
+  "stroke='#1a1206' stroke-width='1.5' stroke-linejoin='round'/></svg>";
+
+// si /logo.png n'existe pas -> logo SVG intégré
+$$('img.brand').forEach((img) => {
+  const swap = () => {
+    if (!img.parentNode) return;
+    const span = document.createElement('span');
+    span.innerHTML = SVG_LOGO;
+    const svg = span.firstChild;
+    svg.setAttribute('class', 'brand ' + img.className.replace('brand', '').trim());
+    img.replaceWith(svg);
+  };
+  img.addEventListener('error', swap);
+  if (img.complete && img.naturalWidth === 0) swap();
+});
+
+/* ---------------- intro (entrée / refresh) ---------------- */
+let introShown = false;
+function playIntro() {
+  if (introShown) return;
+  introShown = true;
+  const intro = $('#intro');
+  if (!intro) return;
+  try {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  } catch {}
+  intro.hidden = false;
+  intro.classList.remove('done');
+  const finish = () => {
+    if (intro.classList.contains('done')) return;
+    intro.classList.add('done');
+    setTimeout(() => { intro.hidden = true; }, 600);
+  };
+  intro.addEventListener('click', finish, { once: true }); // cliquer = passer
+  setTimeout(finish, 2300);
+}
+
+function showView(name) {
+  const id = 'view' + name.charAt(0).toUpperCase() + name.slice(1);
+  if (location.hash.slice(1) !== name) {
+    history.replaceState(null, '', '#' + name); // lien copiable qui rouvre cette section
+  }
+  $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
+  $$('#rail .navbtn[data-view]').forEach((b) =>
+    b.classList.toggle('active', b.dataset.view === name),
+  );
+  if (NEW_BADGE_UNTIL[name]) {
+    markNewBadgeSeen(name);
+    $(`.navbtn[data-view="${name}"] .nb-new`)?.remove();
+  }
+  if (name === 'home') renderHome();
+  if (name === 'staff') {
+    if (!presence.length && !teamRoster.length) $('#staffList').innerHTML = skelRows(4);
+    else renderStaffView();
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_team' }));
+  }
+  if (name === 'stats') {
+    if (!lastStats) $('#statsBody').innerHTML = skelRows(2, 'lg') + skelRows(4);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stats' }));
+  }
+  if (name === 'settings' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_settings' }));
+    if (settingsScope === 'owner') ws.send(JSON.stringify({ type: 'get_logins' }));
+  }
+  if (name === 'members' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
+  if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
+    ws.send(JSON.stringify({ type: 'get_suggestions' }));
+  if (name === 'mod') {
+    $('#modRecruit').classList.toggle('hidden', !perms.recruit);
+    $('#modHooks').classList.toggle('hidden', !perms.webhooks);
+    if (ws && ws.readyState === 1) {
+      if (perms.recruit) ws.send(JSON.stringify({ type: 'get_recruit' }));
+      if (perms.webhooks) ws.send(JSON.stringify({ type: 'get_hooks' }));
+    }
+  }
+  if (name === 'announce') {
+    $('#annStatus').textContent = '';
+  }
+  if (name === 'sanctions' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_sanctions' }));
+  }
+  if (name === 'panels' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_panels' }));
+  }
+  if (name === 'shop') {
+    $('#shopStatus').textContent = '';
+  }
+  if (name === 'report' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'get_reports' }));
+  if (name === 'activity') {
+    if (activity.length) renderActivity();
+    else $('#actList').innerHTML = skelRows(5);
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_activity' }));
+  }
+  if (name === 'orgchart') {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_orgchart' }));
+    $('#ogAddBox').classList.toggle('hidden', !perms.orgchart);
+    $('#ogEditHint').classList.toggle('hidden', !perms.orgchart);
+    renderOrgChart();
+  }
+  if (name === 'rankup') {
+    $('#rkStatus').textContent = '';
+  }
+  if (name === 'convoke' && ws && ws.readyState === 1)
+    ws.send(JSON.stringify({ type: 'get_convocations' }));
+  if (name === 'banners' && perms.banners && typeof initBannerEditor === 'function') initBannerEditor();
+  if (name === 'patch') loadPatchNotes();
+}
+
+/* ---------------- badge "Nouveau" sur les onglets récemment ajoutés ---------------- */
+const NEW_BADGE_UNTIL = {
+  rankup: '2026-09-26', announce: '2026-09-26', sanctions: '2026-09-26',
+  panels: '2026-09-26', shop: '2026-09-26',
+};
+function newBadgeSeen() {
+  try { return JSON.parse(localStorage.getItem('volt_new_seen') || '[]'); } catch { return []; }
+}
+function markNewBadgeSeen(name) {
+  try {
+    const seen = new Set(newBadgeSeen());
+    seen.add(name);
+    localStorage.setItem('volt_new_seen', JSON.stringify([...seen]));
+  } catch {}
+}
+function applyNewBadges() {
+  const seen = new Set(newBadgeSeen());
+  const now = Date.now();
+  for (const [name, until] of Object.entries(NEW_BADGE_UNTIL)) {
+    const btn = document.querySelector(`.navbtn[data-view="${name}"]`);
+    if (!btn) continue;
+    const show = !seen.has(name) && now < new Date(until).getTime() && !btn.classList.contains('hidden');
+    let dot = btn.querySelector('.nb-new');
+    if (show && !dot) {
+      dot = document.createElement('span');
+      dot.className = 'nb-new';
+      btn.appendChild(dot);
+    } else if (!show && dot) {
+      dot.remove();
+    }
+  }
+}
+
+/* ---------------- permissions : affichage des onglets ---------------- */
+function applyPermsUI() {
+  const anyMod = ['recruit', 'webhooks'].some((k) => perms[k]);
+  $('#modNav').classList.toggle('hidden', !anyMod);
+  $('#bannersNav').classList.toggle('hidden', !perms.banners);
+  $('#rankupNav').classList.toggle('hidden', !perms.rankup);
+  $('#announceNav').classList.toggle('hidden', !perms.announce);
+  $('#sanctionsNav').classList.toggle('hidden', !perms.sanctions);
+  $('#panelsNav').classList.toggle('hidden', !perms.panels);
+  $('#shopNav').classList.toggle('hidden', !perms.shop);
+  const cm = $('#cMacros');
+  if (cm) cm.classList.toggle('hidden', settingsScope !== 'owner');
+  $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
+  applyNewBadges();
+}
+
+/* ---------------- macros (réponses pré-écrites) ---------------- */
+function fillMacro(text) {
+  const t = current ? tickets.get(current) : null;
+  const filled = String(text).replace(/\{name\}/g, t ? t.username : '');
+  const inp = $('#input');
+  inp.value = inp.value ? inp.value.replace(/\s*$/, ' ') + filled : filled;
+  inp.focus();
+  $('#macroMenu').classList.add('hidden');
+}
+function renderMacroMenu() {
+  const box = $('#macroMenu');
+  if (!box) return;
+  box.innerHTML = macros.length
+    ? macros
+        .map(
+          (m, i) =>
+            `<button class="macro-i" type="button" data-i="${i}"><b>${esc(m.name)}</b><span>${esc(m.text.slice(0, 90))}</span></button>`,
+        )
+        .join('')
+    : '<div class="muted" style="padding:8px">Aucune macro. (Réglages → Macros)</div>';
+  box.querySelectorAll('.macro-i').forEach((b) =>
+    b.addEventListener('click', () => fillMacro(macros[+b.dataset.i].text)),
+  );
+  $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
+}
+$('#macroBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('#macroMenu').classList.toggle('hidden');
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#macroMenu') && e.target.id !== 'macroBtn')
+    $('#macroMenu').classList.add('hidden');
+});
+
+/* ---------------- guide de bienvenue (obligé de lire) ---------------- */
+let obSeen = false;
+function showOnboarding(force) {
+  const ob = $('#onboarding');
+  const body = $('#obBody');
+  const agree = $('#obAgree');
+  const go = $('#obGo');
+  const hint = $('#obHint');
+  if (!ob) return;
+  ob.hidden = false;
+  agree.checked = false;
+  agree.disabled = true;
+  go.disabled = true;
+  body.scrollTop = 0;
+  const opened = Date.now();
+  const MIN_MS = 25000; // temps de lecture minimum
+  let scrolledEnd = false;
+  const atBottom = () => body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  const check = () => {
+    if (atBottom()) scrolledEnd = true;
+    const left = Math.ceil((MIN_MS - (Date.now() - opened)) / 1000);
+    if (!scrolledEnd) {
+      hint.textContent = '⬇ Fais défiler le guide jusqu\'en bas';
+      agree.disabled = true;
+    } else if (left > 0) {
+      hint.textContent = `⏳ Encore ${left}s de lecture…`;
+      agree.disabled = true;
+    } else {
+      hint.textContent = 'Coche la case pour continuer';
+      agree.disabled = false;
+    }
+    go.disabled = !(agree.checked && !agree.disabled);
+  };
+  body.addEventListener('scroll', check);
+  const iv = setInterval(check, 1000);
+  check();
+  agree.onchange = check;
+  go.onclick = () => {
+    clearInterval(iv);
+    body.removeEventListener('scroll', check);
+    ob.hidden = true;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'onboarding_done' }));
+  };
+}
+
+/* ---------------- notes de version ---------------- */
+let patchLoaded = false;
+async function loadPatchNotes() {
+  if (patchLoaded) return;
+  try {
+    const r = await fetch('/patchnotes.json', { cache: 'no-cache' });
+    const list = r.ok ? await r.json() : [];
+    $('#patchList').innerHTML = list.length
+      ? list
+          .map(
+            (p) =>
+              `<div class="patch"><div class="patch-h"><strong>${esc(p.title)}</strong>` +
+              `<span class="patch-d">${esc(p.date)}</span></div>` +
+              `<ul>${(p.items || []).map((it) => `<li>${esc(it)}</li>`).join('')}</ul></div>`,
+          )
+          .join('')
+      : '<div class="muted">Aucune note pour l\'instant.</div>';
+    patchLoaded = true;
+  } catch {
+    $('#patchList').innerHTML = '<div class="muted">Impossible de charger les notes.</div>';
+  }
+}
+
+/* ---------------- suggestions ---------------- */
+$('#sugSend').addEventListener('click', () => {
+  const text = $('#sugText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#sugSend').disabled = true;
+  $('#sugStatus').textContent = 'envoi…';
+  ws.send(JSON.stringify({ type: 'suggest', text }));
+});
+function renderSugList(list) {
+  const box = $('#sugList');
+  box.classList.toggle('hidden', settingsScope !== 'owner');
+  if (settingsScope !== 'owner') return;
+  if (!list.length) {
+    box.innerHTML = emptyState('💡', 'Aucune suggestion pour l\'instant', "Les idées de l'équipe pour améliorer le panel apparaîtront ici.");
+    return;
+  }
+  box.innerHTML = '';
+  for (const s of list) {
+    const el = document.createElement('div');
+    el.className = 'sug-item' + (s.done ? ' done' : '');
+    el.innerHTML =
+      `<div class="si-main">${esc(s.text)}<div class="si-by">${esc(s.by)} · ${new Date(s.at).toLocaleString('fr-FR')}</div></div>` +
+      `<div class="si-btns"><button class="linkbtn si-done" type="button">${s.done ? '↩' : '✓'}</button>` +
+      `<button class="linkbtn si-del" type="button">🗑</button></div>`;
+    el.querySelector('.si-done').addEventListener('click', () =>
+      ws.send(JSON.stringify({ type: 'suggestion_done', id: s.id, done: !s.done })),
+    );
+    el.querySelector('.si-del').addEventListener('click', () => {
+      if (window.confirm('Supprimer cette suggestion ?'))
+        ws.send(JSON.stringify({ type: 'suggestion_del', id: s.id }));
+    });
+    box.appendChild(el);
+  }
+}
+
+/* ---------------- signalements (bugs) ---------------- */
+$('#repSend').addEventListener('click', () => {
+  const text = $('#repText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#repSend').disabled = true;
+  $('#repStatus').textContent = 'envoi…';
+  ws.send(JSON.stringify({ type: 'report', text, kind: $('#repKind').value }));
+});
+function renderReports(list) {
+  const box = $('#repList');
+  // visible dès qu'il y a un signalement à afficher (le staff voit les siens, le modo voit tout)
+  box.classList.toggle('hidden', !list.length && !canModerate);
+  if (!list.length) {
+    box.innerHTML = canModerate ? emptyState('🐞', 'Aucun signalement', 'Les bugs et problèmes remontés par le staff apparaîtront ici.') : '';
+    return;
+  }
+  box.innerHTML = '';
+  for (const r of list) {
+    const el = document.createElement('div');
+    el.className = 'sug-item rep-item' + (r.done ? ' done' : '');
+    const replies = (r.replies || [])
+      .map(
+        (rp) =>
+          `<div class="rep-reply${rp.by === myId ? ' mine' : ''}"><strong>${esc(rp.byName)}</strong> · ${new Date(rp.at).toLocaleString('fr-FR')}<br>${esc(rp.text)}</div>`,
+      )
+      .join('');
+    el.innerHTML =
+      `<div class="si-main"><span class="rep-tag ${r.kind}">${r.kind === 'bug' ? '🐞 bug' : '⚠ autre'}</span> ${esc(r.text)}` +
+      `<div class="si-by">${esc(r.by)} · ${new Date(r.at).toLocaleString('fr-FR')}${r.done ? ' · <span class="rep-ok">résolu</span>' : ''}</div>` +
+      (replies ? `<div class="rep-thread">${replies}</div>` : '') +
+      `<div class="rep-replybar"><input class="rep-in" type="text" placeholder="Écris une réponse…" />` +
+      `<button class="rep-send btn-accent" type="button">Envoyer</button></div>` +
+      `</div>` +
+      (canModerate
+        ? `<div class="si-btns"><button class="linkbtn si-done" type="button">${r.done ? '↩' : '✓'}</button>` +
+          `<button class="linkbtn si-del" type="button">🗑</button></div>`
+        : '');
+    if (canModerate) {
+      el.querySelector('.si-done').addEventListener('click', () =>
+        ws.send(JSON.stringify({ type: 'report_done', id: r.id, done: !r.done })),
+      );
+      el.querySelector('.si-del').addEventListener('click', () => {
+        if (window.confirm('Supprimer ce signalement ?'))
+          ws.send(JSON.stringify({ type: 'report_del', id: r.id }));
+      });
+    }
+    const sendReply = () => {
+      const inp = el.querySelector('.rep-in');
+      const t = inp.value.trim();
+      if (!t || !ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ type: 'report_reply', id: r.id, text: t }));
+      inp.value = '';
+    };
+    el.querySelector('.rep-send').addEventListener('click', sendReply);
+    el.querySelector('.rep-in').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendReply();
+    });
+    box.appendChild(el);
+  }
+}
+
+/* ---------------- annuaire des membres du serveur ---------------- */
+let dmTarget = null;
+function renderMembersView(m) {
+  const box = $('#memberList');
+  $('#memCount').textContent =
+    m.total > m.members.length
+      ? `${m.members.length} affichés sur ${m.total} (${m.cached} au total)`
+      : `${m.total} membre${m.total > 1 ? 's' : ''}`;
+  if (!m.members.length) {
+    box.innerHTML = m.cached
+      ? emptyState('🔍', 'Aucun membre ne correspond', 'Essaie un pseudo, un tag, un ID, ou le nom d\'un rôle.')
+      : emptyState('⏳', 'Chargement de la liste des membres…', 'Réessaie dans un instant.');
+    return;
+  }
+  box.innerHTML = '';
+  for (const mem of m.members) {
+    const el = document.createElement('div');
+    el.className = 'member-item';
+    el.innerHTML =
+      `<div class="mi-main"><span class="mi-name">${esc(mem.name)}</span> ` +
+      `<span class="mi-tag">@${esc(mem.tag)}</span>` +
+      (mem.roles.length
+        ? `<div class="mi-roles">${mem.roles.slice(0, 8).map((r) => `<span class="rchip">${esc(r)}</span>`).join('')}</div>`
+        : '') +
+      `</div>` +
+      `<button class="mi-dm" type="button">✉️ MP</button>`;
+    el.querySelector('.mi-dm').addEventListener('click', () => {
+      dmTarget = mem;
+      $('#dmTo').textContent = `MP à ${mem.name}`;
+      $('#dmText').value = '';
+      $('#dmSend').disabled = false;
+      $('#dmModal').classList.remove('hidden');
+      $('#dmText').focus();
+    });
+    box.appendChild(el);
+  }
+}
+let memSearchTimer = null;
+$('#memSearch').addEventListener('input', (e) => {
+  clearTimeout(memSearchTimer);
+  memSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ type: 'members', q: e.target.value.trim() }));
+  }, 250);
+});
+$('#dmClose').addEventListener('click', () => $('#dmModal').classList.add('hidden'));
+$('#dmModal').addEventListener('click', (e) => {
+  if (e.target.id === 'dmModal') $('#dmModal').classList.add('hidden');
+});
+$('#dmSend').addEventListener('click', () => {
+  const text = $('#dmText').value.trim();
+  if (!text || !dmTarget || !ws || ws.readyState !== 1) return;
+  $('#dmSend').disabled = true;
+  setStatus('Envoi…');
+  ws.send(JSON.stringify({ type: 'dm_member', userId: dmTarget.id, text }));
+});
+
+const ST_LABEL = { online: 'présent', busy: 'occupé', away: 'absent', idle: 'inactif' };
+let teamRoster = []; // tout le monde ayant déjà ouvert le site (listFirstSeen), pour compléter la présence live
+function statusOf(s) {
+  return ['online', 'busy', 'away', 'idle'].includes(s?.status) ? s.status : 'online';
+}
+function renderStaffView() {
+  const box = $('#staffList');
+  if (!box) return;
+  $('#staffCount').textContent = presence.length + ' en ligne';
+  // fusionne la présence live avec tout le monde qui s'est déjà connecté (offline = gris)
+  const byUid = new Map();
+  presence.forEach((s) => byUid.set(String(s.uid), { online: true, ...s }));
+  teamRoster.forEach((r) => {
+    const uid = String(r.uid);
+    if (!byUid.has(uid)) byUid.set(uid, { online: false, uid, name: r.name, roleName: r.roleName, lastAt: r.lastAt });
+  });
+  const list = [...byUid.values()].sort((a, b) => {
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+  if (!list.length) {
+    box.innerHTML = emptyState('👥', 'Personne ne s\'est encore connecté', "L'équipe apparaîtra ici dès la première connexion.");
+    return;
+  }
+  box.innerHTML = list
+    .map((s) => {
+      if (s.online) {
+        const st = statusOf(s);
+        return (
+          `<div class="staff-item"><span class="sdot st-${st}" title="${ST_LABEL[st]}"></span>` +
+          `<span class="sname">${esc(s.name)}${s.uid === myId ? ' <span class="sme">(toi)</span>' : ''}` +
+          `<span class="sst">${ST_LABEL[st]}</span></span>` +
+          `<span class="srole">${esc(s.roleName || levelName(s.level))}</span></div>`
+        );
+      }
+      return (
+        `<div class="staff-item offline"><span class="sdot st-offline" title="Pas là"></span>` +
+        `<span class="sname">${esc(s.name)}` +
+        `<span class="sst">pas là${s.lastAt ? ' · vu ' + ago(s.lastAt) : ''}</span></span>` +
+        (s.roleName ? `<span class="srole">${esc(s.roleName)}</span>` : '') +
+        `</div>`
+      );
+    })
+    .join('');
+}
+
+$$('#rail .navbtn[data-view]').forEach((b) =>
+  b.addEventListener('click', () => showView(b.dataset.view)),
+);
+
+$('#presence').addEventListener('click', () => showView('staff'));
+
+/* ---------------- cartes d'accueil réorganisables (par staff, perso) ---------------- */
+let cardsEditMode = false;
+
+function loadCardOrder() {
+  try { return JSON.parse(localStorage.getItem('volt_card_order') || 'null'); } catch { return null; }
+}
+function saveCardOrder(ids) {
+  try { localStorage.setItem('volt_card_order', JSON.stringify(ids)); } catch {}
+}
+function loadHiddenCards() {
+  try { return new Set(JSON.parse(localStorage.getItem('volt_card_hidden') || '[]')); } catch { return new Set(); }
+}
+function saveHiddenCards(set) {
+  try { localStorage.setItem('volt_card_hidden', JSON.stringify([...set])); } catch {}
+}
+let hiddenCardIds = loadHiddenCards();
+
+function applyCardLayout() {
+  const box = $('#homeCards');
+  const cards = Array.from(box.querySelectorAll('.card[data-card-id]'));
+  const order = loadCardOrder();
+  if (order && order.length) {
+    const byId = new Map(cards.map((c) => [c.dataset.cardId, c]));
+    order.forEach((id) => { const c = byId.get(id); if (c) box.appendChild(c); });
+    // toute carte connue mais absente de l'ordre sauvegardé (ex : ajoutée depuis) va à la fin
+    cards.forEach((c) => { if (!order.includes(c.dataset.cardId)) box.appendChild(c); });
+  }
+  cards.forEach((c) => {
+    c.classList.toggle('card-user-hidden', hiddenCardIds.has(c.dataset.cardId) && !cardsEditMode);
+  });
+  renderHiddenTray();
+}
+
+function renderHiddenTray() {
+  const tray = $('#cardsHiddenTray');
+  if (!cardsEditMode || !hiddenCardIds.size) {
+    tray.classList.add('hidden');
+    tray.innerHTML = '';
+    return;
+  }
+  tray.classList.remove('hidden');
+  tray.innerHTML =
+    '<span class="muted">Masquées :</span> ' +
+    [...hiddenCardIds]
+      .map((id) => {
+        const card = $(`.card[data-card-id="${id}"]`);
+        const label = card ? card.querySelector('.lbl').textContent : id;
+        return `<button type="button" class="card-restore" data-id="${id}">+ ${esc(label)}</button>`;
+      })
+      .join('');
+  tray.querySelectorAll('.card-restore').forEach((b) =>
+    b.addEventListener('click', () => {
+      hiddenCardIds.delete(b.dataset.id);
+      saveHiddenCards(hiddenCardIds);
+      applyCardLayout();
+    }),
+  );
+}
+
+$('#cardsEditBtn').addEventListener('click', () => {
+  cardsEditMode = !cardsEditMode;
+  $('#homeCards').classList.toggle('cards-editing', cardsEditMode);
+  $('#cardsEditBtn').textContent = cardsEditMode ? '✓ Terminer' : '↕️ Réorganiser les cartes';
+  applyCardLayout();
+});
+
+Array.from(document.querySelectorAll('.card[data-card-id]')).forEach((c) => {
+  c.setAttribute('draggable', 'false');
+  c.addEventListener('dragstart', (e) => {
+    if (!cardsEditMode) return e.preventDefault();
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', c.dataset.cardId);
+    c.classList.add('card-dragging');
+  });
+  c.addEventListener('dragend', () => c.classList.remove('card-dragging'));
+  c.addEventListener('dragover', (e) => {
+    if (!cardsEditMode) return;
+    e.preventDefault();
+    const box = $('#homeCards');
+    const dragging = box.querySelector('.card-dragging');
+    if (!dragging || dragging === c) return;
+    const cards = Array.from(box.querySelectorAll('.card[data-card-id]'));
+    const from = cards.indexOf(dragging);
+    const to = cards.indexOf(c);
+    if (from < to) c.after(dragging); else c.before(dragging);
+  });
+  c.addEventListener('drop', (e) => e.preventDefault());
+  const handle = c.querySelector('.card-drag');
+  if (handle) {
+    handle.addEventListener('pointerdown', () => { if (cardsEditMode) c.setAttribute('draggable', 'true'); });
+  }
+  c.querySelector('.card-hide')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hiddenCardIds.add(c.dataset.cardId);
+    saveHiddenCards(hiddenCardIds);
+    applyCardLayout();
+  });
+});
+
+$('#homeCards').addEventListener('dragend', () => {
+  const ids = Array.from($('#homeCards').querySelectorAll('.card[data-card-id]')).map((c) => c.dataset.cardId);
+  saveCardOrder(ids);
+});
+
+applyCardLayout();
+
+$$('.card[data-go]').forEach((c) =>
+  c.addEventListener('click', (e) => {
+    if (cardsEditMode || e.target.closest('.card-hide') || e.target.closest('.card-drag')) return;
+    const go = c.dataset.go;
+    if (go === 'unassigned') {
+      $$('#filters button').forEach((x) =>
+        x.classList.toggle('active', x.dataset.f === 'unassigned'),
+      );
+      filterMode = 'unassigned';
+      renderSidebar();
+      showView('tickets');
+    } else {
+      showView(go);
+    }
+  }),
+);
+
+function renderHome() {
+  let open = 0;
+  let unassigned = 0;
+  for (const t of tickets.values()) {
+    if (t.status === 'closed') continue;
+    open++;
+    if (!t.assignee_id) unassigned++;
+  }
+  $('#hiName').textContent = myName || '—';
+  $('#hiLevel').textContent = myLevelLabel || levelName(myLevel);
+  animateCount($('#cOpen'), open);
+  animateCount($('#cUnassigned'), unassigned);
+  $('#cOpenHint').textContent = unassigned
+    ? `${unassigned} non assigné${unassigned > 1 ? 's' : ''}`
+    : 'tout est pris en charge';
+  const sh = $('#cStaffHint');
+  if (sh) sh.textContent = `${presence.length} connecté${presence.length > 1 ? 's' : ''}`;
+
+  const myReq = [...tickets.values()].filter(
+    (t) => t.requested_role && myRoles.includes(String(t.requested_role.roleId)),
+  );
+  const hr = $('#homeReq');
+  hr.classList.toggle('hidden', !myReq.length);
+  if (myReq.length) {
+    hr.textContent = `🔔 On te demande sur ${myReq.length} ticket${myReq.length > 1 ? 's' : ''} — clique pour voir`;
+    hr.onclick = () => {
+      showView('tickets');
+      openTicket(myReq[0].user_id);
+    };
+  }
+  renderHomeTop();
+}
+
+/* ---------------- classement staff sur l'accueil (podium + avatars) ---------------- */
+const MEDALS = ['🥇', '🥈', '🥉'];
+function staffAvatarHtml(name, size) {
+  const avatar = teamRoster.find((r) => r.name === name)?.avatar;
+  const letter = esc((name || '?').trim().charAt(0).toUpperCase() || '?');
+  const bg = idColor(name);
+  const img = avatar ? `<img src="${esc(avatar)}" alt="" onerror="this.remove()" />` : '';
+  return (
+    `<span class="ht-av" style="background:${bg};width:${size}px;height:${size}px">` +
+    img +
+    `<span class="ht-av-fb" style="font-size:${Math.round(size * 0.4)}px">${letter}</span></span>`
+  );
+}
+function renderHomeTop() {
+  const box = $('#homeTop');
+  if (!box || !lastStats) return;
+  const byStaff = Object.entries(lastStats.byStaff || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!byStaff.length) { box.classList.add('hidden'); return; }
+  const ratings = lastStats.ratingByStaff || {};
+  box.classList.remove('hidden');
+  const top3 = byStaff.slice(0, 3);
+  const rest = byStaff.slice(3);
+  const since = lastStats.statsSince ? `depuis ${ago(lastStats.statsSince)}` : 'depuis toujours';
+  const podiumHtml = [1, 0, 2] // 2e à gauche, 1er au milieu, 3e à droite
+    .filter((i) => top3[i])
+    .map((i) => {
+      const [name, n] = top3[i];
+      const r = ratings[name];
+      const rank = i + 1;
+      return (
+        `<div class="ht-p ht-p${rank}${name === myName ? ' me' : ''}">` +
+        `<span class="ht-medal">${MEDALS[i]}</span>` +
+        staffAvatarHtml(name, rank === 1 ? 64 : 50) +
+        `<span class="ht-pname">${esc(name)}</span>` +
+        (r ? `<span class="ht-prating">⭐ ${r.avg}</span>` : '') +
+        `<span class="ht-pn" data-target="${n}">0</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  const restHtml = rest
+    .map(([name, n], j) => {
+      const r = ratings[name];
+      return (
+        `<div class="ht-row${name === myName ? ' me' : ''}">` +
+        `<span class="ht-rank">${j + 4}.</span>` +
+        staffAvatarHtml(name, 26) +
+        `<span class="ht-name">${esc(name)}</span>` +
+        (r ? `<span class="ht-rating">⭐ ${r.avg}</span>` : '') +
+        `<span class="ht-n" data-target="${n}">0</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  box.innerHTML =
+    `<div class="ht-head"><span>🏆 Top équipe</span><span class="muted">réponses · ${since}</span></div>` +
+    `<div class="ht-podium">${podiumHtml}</div>` +
+    (restHtml ? `<div class="ht-list">${restHtml}</div>` : '');
+  box.querySelectorAll('[data-target]').forEach((el) => animateCount(el, el.dataset.target));
+}
+
+/* ---------------- présence staff ---------------- */
+function renderPresence() {
+  const box = $('#presence');
+  box.classList.toggle('hidden', !presence.length);
+  box.innerHTML =
+    `<span class="who-lbl">${presence.length} en ligne&nbsp;:</span>` +
+    presence
+      .map(
+        (s) =>
+          `<span class="who-chip st-${statusOf(s)}">${esc(s.name)}` +
+          `<span class="wc-role">${esc(s.roleName || levelName(s.level))}</span></span>`,
+      )
+      .join('');
+  $('#statusPresence').textContent = presence.length
+    ? `${presence.length} staff en ligne`
+    : '';
+  if ($('#viewStaff').classList.contains('active')) renderStaffView();
+}
+
+/* ---------------- fiche membre ---------------- */
+function renderMemberModal(p, query) {
+  const body = $('#mmBody');
+  if (!p) {
+    body.innerHTML = `<div class="mm-empty">Aucun ticket trouvé pour « ${esc(query || '')} ».</div>`;
+    $('#memberModal').classList.remove('hidden');
+    return;
+  }
+  const row = (k, v, bad) => `<div class="mm-row"><span class="k">${k}</span><span class="v${bad ? ' bad' : ''}">${v}</span></div>`;
+  const d = (ts) => (ts ? new Date(ts).toLocaleString('fr-FR') : '—');
+  const noLive = p.status === 'aucun ticket ouvert';
+  const past = p.past_tickets || [];
+  const pastRows = past.length
+    ? `<div class="mm-past"><div class="mm-past-h">Anciens tickets (clôturés) — ${past.length}</div>` +
+      past
+        .map(
+          (a) =>
+            `<div class="mm-past-i"><span>${esc(a.title || a.category || 'ticket')} · ${d(a.closed_at)} · ${a.messages_total} msg</span>` +
+            `<a href="/api/archive/${a.id}" class="mm-dl">⬇</a></div>`,
+        )
+        .join('') +
+      `</div>`
+    : '';
+  body.innerHTML =
+    row('Pseudo', esc(p.username)) +
+    row('ID Discord', esc(p.user_id)) +
+    (p.title ? row('Titre du ticket', esc(p.title)) : '') +
+    row('Statut', noLive ? 'aucun ticket ouvert' : p.status === 'closed' ? 'clôturé' : 'ouvert') +
+    (noLive ? '' : row('Catégorie', esc(p.category || '—'))) +
+    (noLive ? '' : row('Priorité', esc(p.priority))) +
+    (p.escalation_level > 1 ? row('Niveau', esc(levelName(p.escalation_level))) : '') +
+    (noLive ? '' : row('Pris en charge par', esc(p.assignee_name || 'personne'))) +
+    row('Bloqué', p.blacklisted ? 'oui' : 'non', p.blacklisted) +
+    row('Premier contact', d(p.first_at)) +
+    row('Dernière activité', d(p.last_at)) +
+    (noLive ? '' : row('Messages (total)', p.messages_total)) +
+    (noLive ? '' : row('Messages du client', p.messages_client)) +
+    (noLive ? '' : row('Notes internes', p.notes_count)) +
+    (noLive ? '' : row('Staff ayant répondu', p.staff_replied.length ? esc(p.staff_replied.join(', ')) : '—')) +
+    pastRows +
+    (noLive
+      ? ''
+      : `<div class="mm-actions"><button class="btn-accent" id="mmOpen">Ouvrir le ticket</button></div>`);
+  $('#memberModal').classList.remove('hidden');
+  const mo = $('#mmOpen');
+  if (mo)
+    mo.addEventListener('click', () => {
+      $('#memberModal').classList.add('hidden');
+      showView('tickets');
+      openTicket(p.user_id);
+    });
+}
+
+/* ---------------- demande de rôle sur un ticket ---------------- */
+function buildReqRoleSelect() {
+  const sel = $('#reqRole');
+  if (!sel) return;
+  const usable = assignRoles.filter((r) => r.roleId);
+  sel.innerHTML =
+    `<option value="">🙋 Demander…</option>` +
+    usable.map((r) => `<option value="${esc(r.roleId)}">${esc(r.name)}</option>`).join('');
+}
+
+function renderReqBanner() {
+  const b = $('#reqBanner');
+  const t = current ? tickets.get(current) : null;
+  const rr = t && t.requested_role;
+  if (!rr) { b.classList.add('hidden'); b.innerHTML = ''; return; }
+  const mine = myRoles.includes(String(rr.roleId));
+  b.classList.remove('hidden');
+  b.classList.toggle('small', !mine);
+  if (mine) {
+    b.innerHTML =
+      `<span class="rb-txt">🔔 <strong>${esc(rr.by)}</strong> te demande ici — rôle « ${esc(rr.name)} »</span>` +
+      `<button class="btn-accent" id="rbTake" type="button">Prendre le ticket</button>` +
+      `<button class="linkbtn" id="rbClear" type="button">Retirer</button>`;
+    $('#rbTake').addEventListener('click', () => ws.send(JSON.stringify({ type: 'assign', userId: current, take: true })));
+  } else {
+    b.innerHTML =
+      `<span class="rb-txt">🙋 <strong>${esc(rr.name)}</strong> demandé par ${esc(rr.by)}</span>` +
+      `<button class="linkbtn" id="rbClear" type="button">Retirer</button>`;
+  }
+  $('#rbClear').addEventListener('click', () => ws.send(JSON.stringify({ type: 'clear_request', userId: current })));
+}
+
+/* ---------------- notifications ---------------- */
+function setupNotifs() {
+  const btn = $('#notifBtn');
+  if (typeof Notification === 'undefined') {
+    btn.classList.add('hidden');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    btn.classList.add('active');
+    setupPush();
+  }
+  btn.onclick = async () => {
+    if (Notification.permission === 'default') {
+      try {
+        await Notification.requestPermission();
+      } catch {}
+    }
+    if (Notification.permission === 'granted') {
+      btn.classList.add('active');
+      setStatus('Notifications activées.');
+      setupPush();
+    } else {
+      setStatus('Notifications refusées dans le navigateur.');
+    }
+  };
+}
+
+function urlB64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+// Web Push : notifications même quand l'onglet est fermé (nécessite HTTPS en prod).
+async function setupPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!vapidPublic || Notification.permission !== 'granted') return;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(vapidPublic),
+      });
+    }
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(sub),
+    });
+  } catch (e) {
+    console.warn('[push] non activé :', e.message || e);
+  }
+}
+
+function maybeNotify(m) {
+  if (!document.hidden && m.userId === current) return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted')
+    return;
+  const title = m.isNew
+    ? '📩 Nouveau ticket'
+    : m.reopened
+      ? '📩 Ticket relancé'
+      : '💬 Nouveau message';
+  const body = `${m.name || 'Client'} : ${m.preview || ''}`.slice(0, 140);
+  try {
+    const n = new Notification(title, { body });
+    n.onclick = () => {
+      window.focus();
+      showView('tickets');
+      openTicket(m.userId);
+    };
+  } catch {}
+}
+
+/* ---------------- démarrage : session ? ---------------- */
+async function init() {
+  let me = null;
+  try {
+    const r = await fetch('/api/me', { credentials: 'same-origin' });
+    if (r.ok) me = await r.json();
+  } catch {}
+
+  if (!me) {
+    const err = new URLSearchParams(location.search).get('error');
+    if (err === 'not_staff')
+      $('#loginMsg').textContent =
+        "Ce compte n'a pas de rôle staff sur le serveur.";
+    else if (err === 'bad_state')
+      $('#loginMsg').textContent = 'Session de connexion expirée, réessaie.';
+    else if (err)
+      $('#loginMsg').textContent = `Connexion refusée (${err}).`;
+    setStatus('non connecté');
+    return;
+  }
+  connect();
+}
+init();
+
+/* ---------------- websocket ---------------- */
+function connect() {
+  const wsUrl = location.origin.replace(/^http/, 'ws') + '/gateway';
+  ws = new WebSocket(wsUrl);
+  ws.onopen = () => { setConn('ok'); setStatus('connecté'); };
+  ws.onclose = () => { setConn('bad'); setStatus('déconnecté — recharge la page'); };
+  ws.onerror = () => { setConn('bad'); setStatus('erreur de connexion'); };
+  ws.onmessage = (ev) => handle(JSON.parse(ev.data));
+}
+
+function handle(m) {
+  switch (m.type) {
+    case 'hello':
+      if (m.uid) myId = m.uid;
+      myName = m.name || myName;
+      myLevel = m.level || 1;
+      myLevelLabel = m.levelLabel || levelName(myLevel);
+      tiers = Array.isArray(m.tiers) ? m.tiers : [];
+      maxLvl = m.maxLevel || 1;
+      vapidPublic = m.vapidPublic || vapidPublic;
+      blacklist.clear();
+      (m.blacklist || []).forEach((id) => blacklist.add(String(id)));
+      presence = m.staff || presence;
+      if (Array.isArray(m.roles)) myRoles = m.roles.map(String);
+      if (m.roleName !== undefined) myRoleName = m.roleName || '';
+      if (m.canModerate !== undefined) canModerate = !!m.canModerate;
+      if (m.perms) perms = m.perms;
+      if (Array.isArray(m.macros)) { macros = m.macros; renderMacroMenu(); }
+      applyPermsUI();
+      if (Array.isArray(m.assignRoles)) assignRoles = m.assignRoles;
+      if (m.slaMinutes) slaMin = m.slaMinutes;
+      if (m.appearance !== undefined) {
+        myPref =
+          m.appearance && (PRESETS[m.appearance.preset] || isHex(m.appearance.accent))
+            ? {
+                preset: PRESETS[m.appearance.preset] ? m.appearance.preset : 'default',
+                accent: isHex(m.appearance.accent) ? m.appearance.accent : null,
+              }
+            : null;
+        savePref();
+        renderAppearance();
+        syncAppearanceControls();
+      }
+      buildReqRoleSelect();
+      $('#login').classList.add('hidden');
+      $('#app').classList.add('on');
+      playIntro();
+      if (m.onboarded === false && !obSeen) {
+        obSeen = true;
+        const start = () => showOnboarding();
+        if (introShown && $('#intro').hidden) start();
+        else setTimeout(start, 2700); // laisse l'intro se jouer d'abord
+      }
+      setConn('ok');
+      setupNotifs();
+      setStatus(`${m.name} · ${myRoleName || myLevelLabel}`);
+      renderPresence();
+      renderSidebar();
+      renderHome();
+      if (!current) {
+        const h = !hashOpened && location.hash.slice(1);
+        hashOpened = true;
+        const sec = h && document.getElementById('view' + h.charAt(0).toUpperCase() + h.slice(1));
+        showView(sec ? h : 'home');
+      } else syncHeader();
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
+        ws.send(JSON.stringify({ type: 'get_team' })); // avatars pour le podium
+      }
+      break;
+
+    case 'presence':
+      presence = Array.isArray(m.staff) ? m.staff : [];
+      renderPresence();
+      if ($('#viewStaff').classList.contains('active')) renderStaffView();
+      break;
+
+    case 'team':
+      teamRoster = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewStaff').classList.contains('active')) renderStaffView();
+      break;
+
+    case 'member':
+      renderMemberModal(m.profile, m.query);
+      break;
+
+    case 'members':
+      renderMembersView(m);
+      renderConvResults(m);
+      renderOgResults(m);
+      renderRkResults(m);
+      break;
+
+    case 'rankup_result':
+      $('#rkStatus').textContent = m.ok ? 'publié ✓' : `échec (${m.error || '?'})`;
+      $('#rkPublish').disabled = false;
+      if (m.ok) {
+        rkPending = [];
+        renderRkPending();
+      }
+      break;
+
+    case 'suggestions':
+      renderSugList(m.list || []);
+      break;
+
+    case 'suggest_ok':
+      $('#sugText').value = '';
+      $('#sugStatus').textContent = '✓ envoyée, merci !';
+      $('#sugSend').disabled = false;
+      break;
+
+    case 'dm_member_result':
+      if (m.ok) {
+        $('#dmModal').classList.add('hidden');
+        setStatus('MP envoyé.');
+      } else {
+        setStatus(
+          m.error === 'mp_fermes'
+            ? '⚠ Ce membre a ses MP fermés — impossible de le contacter.'
+            : m.error === 'trop_rapide'
+              ? 'Trop de MP d\'affilée, attends une minute.'
+              : `Échec de l'envoi (${m.error}).`,
+        );
+        $('#dmSend').disabled = false;
+      }
+      break;
+
+    case 'theme':
+      applyTheme(m.theme);
+      break;
+
+    case 'appearance_saved': {
+      const st = $('#appStatus');
+      if (st) st.textContent = m.ok ? 'enregistré ✓' : 'échec';
+      break;
+    }
+
+    case 'panel_published':
+      $('#panelStatus').textContent = m.ok
+        ? m.edited
+          ? '✓ panneau mis à jour dans Discord'
+          : '✓ panneau publié dans Discord'
+        : m.error === 'forbidden'
+          ? 'réservé à l\'owner'
+          : `échec : ${m.error || '?'}`;
+      break;
+
+    case 'assign_config':
+      assignRoles = Array.isArray(m.assignRoles) ? m.assignRoles : [];
+      slaMin = m.slaMinutes || slaMin;
+      buildReqRoleSelect();
+      if (current) syncHeader();
+      break;
+
+    case 'role_requested': {
+      setStatus(`🔔 ${m.by} te demande sur « ${m.ticketName} » (${m.roleName})`);
+      const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+      if (row) row.classList.add('flash');
+      if (m.userId === current) renderReqBanner();
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const n = new Notification('🔔 On te demande sur un ticket', {
+            body: `${m.by} — ${m.ticketName} (${m.roleName})`,
+          });
+          n.onclick = () => {
+            window.focus();
+            showView('tickets');
+            openTicket(m.userId);
+          };
+        }
+      } catch {}
+      renderHome();
+      break;
+    }
+
+    case 'settings_meta':
+      settingsScope = m.settingsScope || 'colors';
+      $('#settingsNav').classList.remove('hidden'); // tout le staff : au moins les couleurs
+      applyPermsUI();
+      if (m.theme) applyTheme(m.theme);
+      break;
+
+    case 'perms': {
+      perms = m.perms || {};
+      applyPermsUI();
+      // si la vue active dépend d'une permission, la rafraîchir (gating + fetch)
+      const activeId = $('.view.active')?.id;
+      if (activeId) {
+        const vname = activeId.replace(/^view/, '');
+        showView(vname.charAt(0).toLowerCase() + vname.slice(1));
+      }
+      break;
+    }
+
+    case 'macros':
+      macros = Array.isArray(m.macros) ? m.macros : [];
+      renderMacroMenu();
+      break;
+
+    case 'settings':
+      settingsScope = m.scope || settingsScope;
+      fillSettings(m.settings, settingsScope);
+      break;
+
+    case 'settings_saved':
+      $('#setStatus').textContent = m.ok
+        ? '✓ enregistré'
+        : m.reason === 'forbidden'
+          ? 'réservé au niveau le plus élevé'
+          : 'échec';
+      break;
+
+    case 'blacklist':
+      blacklist.clear();
+      (m.list || []).forEach((id) => blacklist.add(String(id)));
+      renderSidebar();
+      if (current) syncHeader();
+      break;
+
+    case 'kicked':
+      $('#app').classList.remove('on');
+      $('#login').classList.remove('hidden');
+      $('#loginMsg').textContent =
+        m.reason === 'sanctioned'
+          ? "Accès retiré : 3 sanctions ont été enregistrées sur ton compte."
+          : 'Ton rôle staff a été retiré : accès révoqué.';
+      if (ws) ws.close();
+      break;
+
+    case 'error':
+      if (m.reason === 'assignee_higher') {
+        setStatus('Impossible : ce ticket est pris par un grade supérieur.');
+        if (current) syncHeader();
+      } else {
+        setStatus(`session invalide (${m.reason}) — recharge la page`);
+      }
+      break;
+
+    case 'sanctions':
+      renderSanctions(m.list || []);
+      break;
+
+    case 'logins':
+      renderLogins(m.list || [], m.online || []);
+      break;
+
+    case 'reports':
+      renderReports(m.list || []);
+      break;
+
+    case 'convocations':
+      renderConvList(m.list || []);
+      break;
+
+    case 'convoke_result':
+      $('#convStatus').textContent = m.ok
+        ? '✓ convocation envoyée'
+        : m.error === 'mp_fermes'
+          ? '⚠ ce membre a ses MP fermés'
+          : m.error === 'trop_rapide'
+            ? 'trop de convocations d\'affilée, attends une minute'
+            : `échec : ${m.error || '?'}`;
+      if (m.ok) { $('#convText').value = ''; $('#convReason').value = ''; $('#convWhen').value = ''; }
+      $('#convSend').disabled = !convTarget;
+      break;
+
+    case 'panels':
+      renderPanelList(m.list || []);
+      break;
+
+    case 'panel_saved':
+      setStatus('Panneau enregistré.');
+      if (pendingPublishId && m.id && ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'publish_reprise', id: m.id }));
+      }
+      pendingPublishId = null;
+      break;
+
+    case 'reprise_published':
+      setStatus(m.ok ? (m.edited ? '✓ panneau mis à jour dans Discord' : '✓ panneau publié') : `échec panneau : ${m.error || '?'}`);
+      break;
+
+    case 'shop_result':
+      $('#shopStatus').textContent = m.ok ? '✓ annonce publiée' : `échec : ${m.error || '?'}`;
+      $('#shopSend').disabled = false;
+      if (m.ok) { $('#shopTitle').value = ''; $('#shopText').value = ''; }
+      break;
+
+    case 'recruit_state':
+      fillRecruit(m);
+      break;
+
+    case 'hooks':
+      renderHooks(m.list || []);
+      break;
+
+    case 'report_ok':
+      $('#repText').value = '';
+      $('#repStatus').textContent = '✓ envoyé, merci !';
+      $('#repSend').disabled = false;
+      break;
+
+    case 'show_onboarding':
+      showOnboarding(true);
+      break;
+
+    case 'announced':
+      $('#annStatus').textContent = m.ok
+        ? '✓ annonce publiée'
+        : m.error === 'forbidden'
+          ? 'réservé aux hauts gradés'
+          : `échec : ${m.error || '?'}`;
+      if (m.ok) $('#annText').value = '';
+      $('#annSend').disabled = false;
+      break;
+
+    case 'category_assigned': {
+      setStatus(`📂 ${m.by} t'a passé un ticket « ${m.category} » — ${m.ticketName}`);
+      const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+      if (row) row.classList.add('flash');
+      try {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const n = new Notification(`📂 Ticket « ${m.category} »`, {
+            body: `${m.by} — ${m.ticketName}`,
+          });
+          n.onclick = () => { window.focus(); showView('tickets'); openTicket(m.userId); };
+        }
+      } catch {}
+      break;
+    }
+
+    case 'categories':
+      categories = Array.isArray(m.categories) ? m.categories : [];
+      buildCatSelect();
+      break;
+
+    case 'tickets':
+      tickets.clear();
+      m.tickets.forEach((t) => tickets.set(t.user_id, t));
+      if (current && !tickets.has(current)) {
+        setStatus("Tu n'as plus accès à ce ticket (escaladé à un niveau supérieur).");
+        closeTicketView();
+      }
+      renderSidebar();
+      renderHome();
+      if (current) syncHeader();
+      break;
+
+    case 'denied':
+      setStatus('Accès refusé à ce ticket.');
+      if (m.userId === current) closeTicketView();
+      break;
+
+    case 'ticket_gone':
+      tickets.delete(m.userId);
+      msgCache.delete(m.userId);
+      if (m.userId === current) {
+        setStatus('Ce ticket a été supprimé.');
+        closeTicketView();
+      }
+      renderSidebar();
+      renderHome();
+      break;
+
+    case 'ticket_bump': {
+      // nouveau ticket (ancien archivé) : on repart d'une conversation vide
+      if (m.isNew) {
+        msgCache.delete(m.userId);
+        tickets.delete(m.userId);
+        if (m.userId === current && ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'open', userId: m.userId }));
+        }
+      }
+      const t =
+        tickets.get(m.userId) ||
+        { user_id: m.userId, username: m.name, status: 'open' };
+      t.username = m.name || t.username;
+      t.last_preview = m.preview;
+      t.updated_at = Date.now();
+      if (!m.fromStaff) {
+        t.status = 'open';
+        if (m.userId !== current) t.unread = (t.unread || 0) + 1;
+        maybeNotify(m);
+      }
+      tickets.set(m.userId, t);
+      renderSidebar();
+      renderHome();
+      if (!m.fromStaff) {
+        const row = document.querySelector(`.tk[data-uid="${m.userId}"]`);
+        if (row) row.classList.add('flash');
+      }
+      break;
+    }
+
+    case 'search_results':
+      if (m.q === searchQuery) {
+        searchIds = searchQuery ? new Set(m.ids) : null;
+        renderSidebar();
+      }
+      break;
+
+    case 'messages':
+      msgCache.set(m.userId, m.messages);
+      if (m.userId === current) renderMessages();
+      break;
+
+    case 'message': {
+      const uid = m.message.user_id;
+      const arr = msgCache.get(uid) || [];
+      arr.push(m.message);
+      msgCache.set(uid, arr);
+      if (uid === current) renderMessages();
+      if (m.message.author === 'system' && /: 5\/5$/.test(m.message.content || '')) celebrate5Star();
+      break;
+    }
+
+    case 'stats':
+      lastStats = m.stats;
+      renderStats(m.stats);
+      if ($('#viewHome').classList.contains('active')) renderHomeTop();
+      break;
+
+    case 'dm_failed':
+      setStatus(
+        "⚠ impossible d'envoyer le MP à ce client (il a peut-être fermé ses MP).",
+      );
+      break;
+
+    case 'activity_list':
+      activity = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewActivity').classList.contains('active')) renderActivity();
+      break;
+
+    case 'orgchart':
+      orgChart = Array.isArray(m.list) ? m.list : [];
+      if ($('#viewOrgchart').classList.contains('active')) renderOrgChart();
+      break;
+
+    case 'activity':
+      if (m.entry) {
+        activity.unshift(m.entry);
+        if (activity.length > 400) activity.length = 400;
+        if ($('#viewActivity').classList.contains('active')) renderActivity();
+      }
+      break;
+  }
+}
+
+/* ---------------- journal d'activité ---------------- */
+const ACT_META = {
+  reply: { icon: '💬', label: 'a répondu' },
+  note: { icon: '📝', label: 'a ajouté une note' },
+  take: { icon: '✋', label: 'a pris le ticket' },
+  release: { icon: '👋', label: 'a lâché le ticket' },
+  close: { icon: '✅', label: 'a clôturé' },
+  reopen: { icon: '♻️', label: 'a rouvert' },
+  rename: { icon: '✏️', label: 'a renommé' },
+  priority: { icon: '🔺', label: 'a changé la priorité' },
+  escalate: { icon: '⏫', label: 'a changé le niveau' },
+  category: { icon: '🏷️', label: 'a catégorisé' },
+  sanction: { icon: '⛔', label: 'a sanctionné' },
+  unsanction: { icon: '➖', label: 'a retiré une sanction' },
+  delete: { icon: '🗑️', label: 'a supprimé un ticket' },
+  blacklist: { icon: '🚫', label: 'blacklist' },
+  settings: { icon: '⚙️', label: 'a modifié les réglages' },
+  announce: { icon: '📣', label: 'a publié une annonce' },
+  panel: { icon: '📊', label: 'a publié un panneau' },
+  shop: { icon: '🛒', label: 'a publié une annonce boutique' },
+  recruit: { icon: '🧑‍💼', label: 'recrutement staff' },
+  orgchart: { icon: '🗂️', label: 'a modifié l\'organigramme' },
+};
+const ACT_GROUPS = [
+  ['all', 'Tout'],
+  ['tickets', 'Tickets'],
+  ['sanction', 'Sanctions'],
+  ['settings', 'Réglages'],
+  ['announce', 'Annonces'],
+];
+const TICKET_ACTIONS = new Set([
+  'reply', 'note', 'take', 'release', 'close', 'reopen',
+  'rename', 'priority', 'escalate', 'category', 'delete', 'blacklist',
+]);
+
+function actMatchesFilter(a) {
+  if (actFilter === 'all') return true;
+  if (actFilter === 'tickets') return TICKET_ACTIONS.has(a.action);
+  if (actFilter === 'sanction') return a.action === 'sanction' || a.action === 'unsanction';
+  if (actFilter === 'settings') return a.action === 'settings' || a.action === 'orgchart';
+  if (actFilter === 'announce') return a.action === 'announce' || a.action === 'shop' || a.action === 'panel' || a.action === 'recruit';
+  return a.action === actFilter;
+}
+
+function renderActivity() {
+  const filt = $('#actFilters');
+  if (filt && !filt.dataset.built) {
+    filt.dataset.built = '1';
+    filt.innerHTML = ACT_GROUPS.map(
+      ([k, lbl]) => `<button data-af="${k}"${k === actFilter ? ' class="active"' : ''}>${lbl}</button>`,
+    ).join('');
+    filt.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-af]');
+      if (!b) return;
+      actFilter = b.dataset.af;
+      filt.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+      renderActivity();
+    });
+  }
+
+  const box = $('#actList');
+  if (!box) return;
+  const rows = activity.filter(actMatchesFilter);
+  $('#actCount').textContent = rows.length ? `${rows.length} action${rows.length > 1 ? 's' : ''}` : '';
+  if (!rows.length) {
+    box.innerHTML = emptyState('📋', 'Aucune action pour ce filtre', 'Les actions du staff (réponses, sanctions, réglages…) apparaîtront ici en direct.');
+    return;
+  }
+  box.innerHTML = rows
+    .map((a) => {
+      const m = ACT_META[a.action] || { icon: '•', label: a.action };
+      const tk = a.ticket_id
+        ? `<button class="act-tk" data-uid="${esc(a.ticket_id)}">${esc(a.ticket_name || 'ticket')}</button>`
+        : '';
+      const det = a.detail ? `<span class="act-det">${esc(a.detail)}</span>` : '';
+      return (
+        `<div class="act-row">` +
+        `<span class="act-ico">${m.icon}</span>` +
+        `<div class="act-main">` +
+        `<div class="act-line"><b>${esc(a.actor_name)}</b> ${esc(m.label)} ${tk}</div>` +
+        (det ? `<div class="act-sub">${det}</div>` : '') +
+        `</div>` +
+        `<span class="act-time" title="${new Date(a.at).toLocaleString()}">${ago(a.at)}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+  box.querySelectorAll('.act-tk').forEach((b) => {
+    b.addEventListener('click', () => {
+      const uid = b.dataset.uid;
+      if (tickets.has(uid)) {
+        showView('tickets');
+        openTicket(uid);
+      } else {
+        setStatus('Ce ticket n\'est plus dans la liste active.');
+      }
+    });
+  });
+}
+
+/* ---------------- organigramme (rangs avec plusieurs membres chacun) ---------------- */
+let ogSearchTimer = null;
+$('#ogSearch').addEventListener('input', (e) => {
+  clearTimeout(ogSearchTimer);
+  const q = e.target.value.trim();
+  ogSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+
+function renderOgResults(m) {
+  if (!$('#viewOrgchart').classList.contains('active')) return;
+  const box = $('#ogSearchResults');
+  const q = $('#ogSearch').value.trim();
+  if (!m.members || !m.members.length || !q) {
+    box.innerHTML = '';
+    return;
+  }
+  const already = new Set(ogMembers.map((x) => x.discordId));
+  box.innerHTML = m.members
+    .filter((mem) => !already.has(mem.id))
+    .slice(0, 20)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}" data-avatar="${esc(mem.avatar || '')}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
+    b.addEventListener('click', () => {
+      ogMembers.push({ discordId: b.dataset.id, name: b.dataset.name, avatarUrl: b.dataset.avatar });
+      $('#ogSearchResults').innerHTML = '';
+      $('#ogSearch').value = '';
+      renderOgChips();
+      updateOgSaveState();
+    }),
+  );
+}
+
+function renderOgChips() {
+  const box = $('#ogMembersChips');
+  box.innerHTML = ogMembers
+    .map(
+      (m, i) =>
+        `<span class="og-chip"><img src="${esc(m.avatarUrl)}" alt="" />${esc(m.name)}` +
+        `<button type="button" data-rm="${i}" title="Retirer">✕</button></span>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-rm]').forEach((b) =>
+    b.addEventListener('click', () => {
+      ogMembers.splice(Number(b.dataset.rm), 1);
+      renderOgChips();
+      updateOgSaveState();
+    }),
+  );
+}
+
+function updateOgSaveState() {
+  $('#ogSaveBtn').disabled = !($('#ogTitle').value.trim() && ogMembers.length);
+}
+$('#ogTitle').addEventListener('input', updateOgSaveState);
+
+function fillOgParentSelect(excludeId) {
+  const sel = $('#ogParent');
+  const cur = sel.value;
+  sel.innerHTML =
+    '<option value="">— Sommet, personne au-dessus —</option>' +
+    orgChart
+      .filter((n) => n.id !== excludeId)
+      .map((n) => `<option value="${n.id}">${esc(n.title)}</option>`)
+      .join('');
+  sel.value = cur;
+}
+
+function resetOgForm() {
+  ogEditId = null;
+  ogMembers = [];
+  $('#ogSearch').value = '';
+  $('#ogSearchResults').innerHTML = '';
+  $('#ogMembersChips').innerHTML = '';
+  $('#ogTitle').value = '';
+  $('#ogDesc').value = '';
+  $('#ogParent').value = '';
+  $('#ogFormTitle').textContent = '+ Ajouter un rang';
+  $('#ogSaveBtn').textContent = 'Ajouter le rang';
+  $('#ogCancelBtn').classList.add('hidden');
+  updateOgSaveState();
+}
+
+$('#ogSaveBtn').addEventListener('click', () => {
+  const title = $('#ogTitle').value.trim();
+  if (!title || !ogMembers.length || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'orgchart_save',
+      group: {
+        id: ogEditId || undefined,
+        title,
+        description: $('#ogDesc').value.trim(),
+        members: ogMembers,
+        parentId: $('#ogParent').value || null,
+      },
+    }),
+  );
+  resetOgForm();
+});
+$('#ogCancelBtn').addEventListener('click', resetOgForm);
+
+function ogEditGroup(g) {
+  ogEditId = g.id;
+  ogMembers = g.members.map((m) => ({ ...m }));
+  $('#ogSearch').value = '';
+  $('#ogSearchResults').innerHTML = '';
+  renderOgChips();
+  $('#ogTitle').value = g.title || '';
+  $('#ogDesc').value = g.description || '';
+  fillOgParentSelect(g.id);
+  $('#ogParent').value = g.parentId || '';
+  $('#ogFormTitle').textContent = `✏️ Modifier « ${g.title} »`;
+  $('#ogSaveBtn').textContent = 'Enregistrer les modifications';
+  $('#ogCancelBtn').classList.remove('hidden');
+  updateOgSaveState();
+  $('#ogAddBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function ogDeleteGroup(id, title) {
+  if (!confirm(`Supprimer le rang « ${title} » de l'organigramme ?`)) return;
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_delete', id }));
+}
+
+/* --- canvas : positions par défaut (grille) pour les boîtes jamais déplacées --- */
+const OG_BOX_W = 220;
+function ogFallbackPos(i) {
+  const col = i % 3;
+  const row = Math.floor(i / 3);
+  return { x: 40 + col * 260, y: 40 + row * 170 };
+}
+function ogPos(g, i) {
+  return Number.isFinite(g.x) && Number.isFinite(g.y) ? { x: g.x, y: g.y } : ogFallbackPos(i);
+}
+
+function ogBoxHtml(g, pos, isOwner) {
+  const w = g.w || OG_BOX_W;
+  const actions = isOwner
+    ? `<div class="og-actions">` +
+      `<button class="og-a" data-og-edit="${g.id}" title="Modifier">✏️</button>` +
+      `<button class="og-a" data-og-del="${g.id}" title="Supprimer">🗑️</button>` +
+      `</div>`
+    : '';
+  const resize = isOwner ? `<div class="og-resize" title="Redimensionner"></div>` : '';
+  return (
+    `<div class="og-box" data-id="${g.id}" style="left:${pos.x}px;top:${pos.y}px;width:${w}px${isOwner ? ';cursor:grab' : ''}">` +
+    `<div class="og-ghead"><div class="og-gtitle">${esc(g.title)}</div>${actions}</div>` +
+    (g.description ? `<div class="og-gdesc">${esc(g.description)}</div>` : '') +
+    `<div class="og-members">` +
+    g.members
+      .map(
+        (m) =>
+          `<span class="og-member"><img src="${esc(m.avatarUrl)}" alt="" onerror="this.style.visibility='hidden'" />${esc(m.name)}</span>`,
+      )
+      .join('') +
+    `</div>` +
+    resize +
+    `</div>`
+  );
+}
+
+function ogDrawArrows(posById, animate) {
+  const svg = $('#ogArrows');
+  let inner =
+    '<defs><marker id="ogArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+    '<path d="M0 0L10 5L0 10z" fill="var(--border-strong)"/></marker></defs>';
+  orgChart.forEach((g) => {
+    if (!g.parentId || !posById.has(g.parentId) || !posById.has(g.id)) return;
+    const p = posById.get(g.parentId);
+    const c = posById.get(g.id);
+    const x1 = p.x + p.w / 2;
+    const y1 = p.y + p.h;
+    const x2 = c.x + c.w / 2;
+    const y2 = c.y;
+    const midY = (y1 + y2) / 2;
+    inner += `<path class="og-arrow-path" d="M${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" stroke="var(--border-strong)" stroke-width="2" fill="none" marker-end="url(#ogArrow)"/>`;
+  });
+  svg.innerHTML = inner;
+  if (animate && !prefersReducedMotion()) {
+    svg.querySelectorAll('.og-arrow-path').forEach((path, i) => {
+      const len = Math.ceil(path.getTotalLength());
+      path.style.strokeDasharray = len;
+      path.style.setProperty('--og-len', len);
+      path.style.animation = `ogDraw 0.6s ${i * 0.1}s var(--ease) both`;
+    });
+  }
+}
+
+let ogDrag = null; // { id, startX, startY, boxStartX, boxStartY }
+let ogResize = null; // { id, startX, startW }
+
+function ogAttachDrag(el, g) {
+  el.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.og-a') || e.target.closest('.og-resize')) return; // pas sur les boutons ✏️🗑️ ni la poignée
+    try { el.setPointerCapture(e.pointerId); } catch {}
+    ogDrag = { id: g.id, startX: e.clientX, startY: e.clientY, boxStartX: parseFloat(el.style.left), boxStartY: parseFloat(el.style.top) };
+    el.style.cursor = 'grabbing';
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!ogDrag || ogDrag.id !== g.id) return;
+    const nx = Math.max(0, ogDrag.boxStartX + (e.clientX - ogDrag.startX));
+    const ny = Math.max(0, ogDrag.boxStartY + (e.clientY - ogDrag.startY));
+    el.style.left = nx + 'px';
+    el.style.top = ny + 'px';
+    ogRedrawArrowsLive();
+  });
+  const end = (e) => {
+    if (!ogDrag || ogDrag.id !== g.id) return;
+    const nx = Math.max(0, parseFloat(el.style.left));
+    const ny = Math.max(0, parseFloat(el.style.top));
+    ogDrag = null;
+    el.style.cursor = 'grab';
+    el.classList.remove('dragging');
+    g.x = nx;
+    g.y = ny;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_pos', id: g.id, x: nx, y: ny }));
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+
+function ogAttachResize(handle, el, g) {
+  handle.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    try { handle.setPointerCapture(e.pointerId); } catch {}
+    ogResize = { id: g.id, startX: e.clientX, startW: parseFloat(el.style.width) || OG_BOX_W };
+    el.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!ogResize || ogResize.id !== g.id) return;
+    const nw = Math.max(140, Math.min(420, ogResize.startW + (e.clientX - ogResize.startX)));
+    el.style.width = nw + 'px';
+    ogRedrawArrowsLive();
+  });
+  const end = (e) => {
+    if (!ogResize || ogResize.id !== g.id) return;
+    const nw = Math.max(140, Math.min(420, parseFloat(el.style.width)));
+    ogResize = null;
+    el.classList.remove('resizing');
+    g.w = nw;
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'orgchart_size', id: g.id, w: nw }));
+    ogFitCanvas();
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
+function ogRedrawArrowsLive(animate) {
+  const posById = new Map();
+  $('#ogCanvas').querySelectorAll('.og-box').forEach((el) => {
+    posById.set(Number(el.dataset.id), {
+      x: parseFloat(el.style.left),
+      y: parseFloat(el.style.top),
+      w: el.offsetWidth,
+      h: el.offsetHeight,
+    });
+  });
+  ogDrawArrows(posById, animate);
+}
+
+function ogFitCanvas(animate) {
+  const canvas = $('#ogCanvas');
+  let maxX = 900, maxY = 600;
+  canvas.querySelectorAll('.og-box').forEach((el) => {
+    maxX = Math.max(maxX, parseFloat(el.style.left) + el.offsetWidth + 60);
+    maxY = Math.max(maxY, parseFloat(el.style.top) + el.offsetHeight + 60);
+  });
+  canvas.style.width = maxX + 'px';
+  canvas.style.height = maxY + 'px';
+  $('#ogArrows').style.width = maxX + 'px';
+  $('#ogArrows').style.height = maxY + 'px';
+  $('#ogArrows').setAttribute('viewBox', `0 0 ${maxX} ${maxY}`);
+  ogRedrawArrowsLive(animate);
+}
+
+function renderOrgChart() {
+  const canvas = $('#ogCanvas');
+  const isOwner = !!perms.orgchart;
+  fillOgParentSelect(ogEditId);
+  if (!orgChart.length) {
+    canvas.innerHTML = isOwner
+      ? "<p class=\"muted\" style=\"position:absolute;left:20px;top:16px\">Vide pour l'instant — ajoute le premier rang ci-dessus.</p>"
+      : "<p class=\"muted\" style=\"position:absolute;left:20px;top:16px\">Pas encore d'organigramme.</p>";
+    $('#ogArrows').innerHTML = '';
+    return;
+  }
+  const positions = orgChart.map((g, i) => ogPos(g, i));
+  canvas.innerHTML = orgChart.map((g, i) => ogBoxHtml(g, positions[i], isOwner)).join('');
+  canvas.querySelectorAll('.og-box').forEach((el) => {
+    const g = orgChart.find((x) => x.id === Number(el.dataset.id));
+    if (!g) return;
+    if (isOwner) {
+      ogAttachDrag(el, g);
+      const handle = el.querySelector('.og-resize');
+      if (handle) ogAttachResize(handle, el, g);
+    }
+    el.querySelector('[data-og-edit]')?.addEventListener('click', () => ogEditGroup(g));
+    el.querySelector('[data-og-del]')?.addEventListener('click', () => ogDeleteGroup(g.id, g.title));
+  });
+  ogFitCanvas(true);
+}
+
+/* ---------------- changements de grades (rank up / rétrogradation) ---------------- */
+let rkPicked = null;
+let rkPending = []; // [{discordId,name,avatarUrl,from,to,retired,kind:'promo'|'demo'}]
+
+let rkSearchTimer = null;
+$('#rkSearch').addEventListener('input', (e) => {
+  clearTimeout(rkSearchTimer);
+  const q = e.target.value.trim();
+  rkSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+
+function renderRkResults(m) {
+  if (!$('#viewRankup').classList.contains('active')) return;
+  const box = $('#rkSearchResults');
+  const q = $('#rkSearch').value.trim();
+  if (!m.members || !m.members.length || !q) {
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = m.members
+    .slice(0, 20)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}" data-avatar="${esc(mem.avatar || '')}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
+    b.addEventListener('click', () => {
+      rkPicked = { discordId: b.dataset.id, name: b.dataset.name, avatarUrl: b.dataset.avatar };
+      $('#rkSearchResults').innerHTML = '';
+      $('#rkSearch').value = '';
+      const p = $('#rkPicked');
+      p.classList.remove('hidden');
+      p.innerHTML = `<img src="${esc(rkPicked.avatarUrl)}" alt="" /><span>${esc(rkPicked.name)}</span>`;
+      updateRkAddState();
+    }),
+  );
+}
+
+function updateRkAddState() {
+  const retired = $('#rkRetired').checked;
+  const to = $('#rkTo').value.trim();
+  const ok = !!rkPicked && (retired || to);
+  $('#rkAddPromo').disabled = !ok || retired; // une promo doit avoir un nouveau grade
+  $('#rkAddDemo').disabled = !ok;
+}
+$('#rkTo').addEventListener('input', updateRkAddState);
+$('#rkRetired').addEventListener('change', () => {
+  $('#rkTo').disabled = $('#rkRetired').checked;
+  updateRkAddState();
+});
+
+function rkAddEntry(kind) {
+  if (!rkPicked) return;
+  rkPending.push({
+    ...rkPicked,
+    from: $('#rkFrom').value.trim(),
+    to: $('#rkTo').value.trim(),
+    retired: $('#rkRetired').checked,
+    kind,
+  });
+  rkPicked = null;
+  $('#rkPicked').classList.add('hidden');
+  $('#rkPicked').innerHTML = '';
+  $('#rkFrom').value = '';
+  $('#rkTo').value = '';
+  $('#rkRetired').checked = false;
+  $('#rkTo').disabled = false;
+  updateRkAddState();
+  renderRkPending();
+}
+$('#rkAddPromo').addEventListener('click', () => rkAddEntry('promo'));
+$('#rkAddDemo').addEventListener('click', () => rkAddEntry('demo'));
+
+function renderRkPending() {
+  const box = $('#rkPending');
+  box.innerHTML = rkPending
+    .map(
+      (e, i) =>
+        `<div class="hook-row"><div>` +
+        `<b>${e.kind === 'promo' ? '⬆️ Promotion' : '⬇️ Rétrogradation'}</b> — ${esc(e.name)}<br/>` +
+        `<span class="muted">${esc(e.from || '—')} → ${e.retired ? 'Retiré du staff' : esc(e.to)}</span>` +
+        `</div><button type="button" data-rk-rm="${i}">✕</button></div>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-rk-rm]').forEach((b) =>
+    b.addEventListener('click', () => {
+      rkPending.splice(Number(b.dataset.rkRm), 1);
+      renderRkPending();
+      $('#rkPublish').disabled = !rkPending.length;
+    }),
+  );
+  $('#rkPublish').disabled = !rkPending.length;
+}
+
+$('#rkPublish').addEventListener('click', () => {
+  if (!rkPending.length || !ws || ws.readyState !== 1) return;
+  $('#rkPublish').disabled = true;
+  $('#rkStatus').textContent = 'publication…';
+  ws.send(
+    JSON.stringify({
+      type: 'rankup_post',
+      promotions: rkPending.filter((e) => e.kind === 'promo'),
+      demotions: rkPending.filter((e) => e.kind === 'demo'),
+      channelId: $('#rkChan').value.trim(),
+    }),
+  );
+});
+
+/* ---------------- stats ---------------- */
+function fmtDur(ms) {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + ' s';
+  const mn = Math.round(s / 60);
+  if (mn < 60) return mn + ' min';
+  const h = Math.floor(mn / 60);
+  return `${h} h ${mn % 60} min`;
+}
+
+function rowBar(label, val, max) {
+  const pct = Math.round((val / Math.max(1, max)) * 100);
+  return (
+    `<div class="srow"><span class="sl">${esc(label)}</span>` +
+    `<span class="sbar"><span style="width:${pct}%"></span></span>` +
+    `<span class="sv">${val}</span></div>`
+  );
+}
+
+function renderStats(s) {
+  const kpi = (l, v) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const maxDay = Math.max(1, ...s.perDay.map((d) => d.count));
+  const bars = s.perDay
+    .map(
+      (d) =>
+        `<div class="bar" title="${d.date} : ${d.count}">` +
+        `<div class="fill" style="height:${Math.round((d.count / maxDay) * 100)}%"></div>` +
+        `<div class="bl">${d.date.slice(8)}</div></div>`,
+    )
+    .join('');
+
+  const cats = Object.entries(s.byCategory).sort((a, b) => b[1] - a[1]);
+  const catMax = Math.max(1, ...cats.map((c) => c[1]));
+  const catRows = cats.length
+    ? cats.map(([k, v]) => rowBar(k, v, catMax)).join('')
+    : '<div class="muted">—</div>';
+
+  const staff = Object.entries(s.byStaff).sort((a, b) => b[1] - a[1]);
+  const staffMax = Math.max(1, ...staff.map((c) => c[1]));
+  const staffRows = staff.length
+    ? staff.map(([k, v]) => rowBar(k, v, staffMax)).join('')
+    : '<div class="muted">—</div>';
+
+  const wl = Object.entries(s.workload || {}).sort((a, b) => b[1] - a[1]);
+  const wlMax = Math.max(1, ...wl.map((c) => c[1]));
+  const wlRows = wl.length
+    ? wl.map(([k, v]) => rowBar(k, v, wlMax)).join('')
+    : '<div class="muted">Aucun ticket en cours assigné.</div>';
+
+  const rbs = Object.entries(s.ratingByStaff || {}).sort((a, b) => b[1].avg - a[1].avg);
+  const rbsRows = rbs.length
+    ? rbs.map(([k, v]) => rowBar(`${k} (${v.n} avis)`, v.avg, 5)).join('')
+    : '<div class="muted">Aucune note pour l\'instant.</div>';
+
+  $('#statsBody').innerHTML =
+    `<div class="kpis">${kpi('Total', s.total)}${kpi('Ouverts', s.open)}` +
+    `${kpi('Clôturés', s.closed)}${kpi('Non assignés', s.unassigned)}` +
+    `${kpi('Réponse moy.', fmtDur(s.avgResponseMs))}` +
+    `${kpi('Satisfaction', s.avgRating != null ? s.avgRating + '/5' : '—')}</div>` +
+    `<h4>Charge actuelle par staff (tickets ouverts assignés)</h4>${wlRows}` +
+    `<h4>Satisfaction par staff — moyenne ${s.avgRating != null ? s.avgRating + '/5' : '—'} sur ${s.ratingCount || 0} avis</h4>${rbsRows}` +
+    `<h4>Tickets créés (14 derniers jours)</h4><div class="chart">${bars}</div>` +
+    `<h4>Par catégorie</h4>${catRows}` +
+    `<h4>Réponses par staff (total)</h4>${staffRows}`;
+}
+
+$('#statsClose').addEventListener('click', () => showView('home'));
+
+/* ---------------- recherche + filtre ---------------- */
+let searchTimer = null;
+$('#search').addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim();
+  clearTimeout(searchTimer);
+  if (!searchQuery) {
+    searchIds = null;
+    renderSidebar();
+    return;
+  }
+  searchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ type: 'search', q: searchQuery }));
+  }, 250);
+});
+document.querySelectorAll('#filters button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document
+      .querySelectorAll('#filters button')
+      .forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    filterMode = b.dataset.f;
+    renderSidebar();
+  });
+});
+$('#advToggle').addEventListener('click', () => {
+  const hidden = $('#advFilters').classList.toggle('hidden');
+  $('#advToggle').textContent = hidden ? '＋ filtres avancés' : '－ filtres avancés';
+});
+$('#advAssignee').addEventListener('change', (e) => {
+  advAssignee = e.target.value;
+  renderSidebar();
+});
+$('#advPriority').addEventListener('change', (e) => {
+  advPriority = e.target.value;
+  renderSidebar();
+});
+
+/* ---------------- vue ticket ---------------- */
+function closeTicketView() {
+  current = null;
+  $('#viewTickets').classList.remove('show-convo');
+  $('#msgs').innerHTML =
+    '<div class="m system">Sélectionne un ticket à gauche.</div>';
+  $('#input').disabled = true;
+  $('#sendBtn').disabled = true;
+  syncHeader();
+  renderSidebar();
+}
+$('#backToList').addEventListener('click', () =>
+  $('#viewTickets').classList.remove('show-convo'),
+);
+
+/* ---------------- rendu sidebar ---------------- */
+// couleur stable dérivée de l'ID (pour l'avatar de secours)
+function idColor(id) {
+  let h = 0;
+  for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `hsl(${h % 360} 60% 40%)`;
+}
+function avatarHtml(t) {
+  const letter = esc((t.username || '?').trim().charAt(0).toUpperCase() || '?');
+  const bg = idColor(t.user_id);
+  const img = t.avatar_url
+    ? `<img src="${esc(t.avatar_url)}" alt="" loading="lazy" onerror="this.remove()" />`
+    : '';
+  return `<span class="tk-av" style="background:${bg}">${img}<span class="tk-av-fb">${letter}</span></span>`;
+}
+function ticketRow(t) {
+  const el = document.createElement('div');
+  const mine = t.assignee_id && t.assignee_id === myId;
+  const bl = blacklist.has(String(t.user_id));
+  el.className =
+    'tk' +
+    (t.user_id === current ? ' active' : '') +
+    (t.status === 'closed' ? ' closed' : '') +
+    (bl ? ' bl' : '') +
+    (t.assignee_id && !mine ? ' assigned-other' : '') +
+    (t.priority ? ' pri-' + t.priority : '');
+  const reqMine = t.requested_role && myRoles.includes(String(t.requested_role.roleId));
+  if (reqMine) el.className += ' req-mine';
+  el.dataset.uid = t.user_id;
+  const pri = t.priority && t.priority !== 'normal'
+    ? `<span class="pri ${t.priority}" title="priorité ${t.priority}"></span>`
+    : '';
+  const tags = [];
+  if (t.status !== 'closed') {
+    if (t.waiting === 'staff') {
+      const mn = Math.max(0, Math.round((Date.now() - (t.last_client_at || Date.now())) / 60000));
+      tags.push(`<span class="tag-pill sla${mn > slaMin ? ' late' : ''}">⏱ ${mn}m</span>`);
+    } else if (t.waiting === 'client') {
+      tags.push(`<span class="tag-pill wait">💬 attente client</span>`);
+    }
+  }
+  if (t.requested_role) {
+    tags.push(`<span class="tag-pill req">🙋 ${esc(t.requested_role.name)}${reqMine ? ' (toi)' : ''}</span>`);
+  }
+  if (t.assignee_id) {
+    tags.push(`<span class="tag-pill lock${mine ? ' mine' : ''}">🔒 ${mine ? 'toi' : esc(t.assignee_name || '?')}</span>`);
+  }
+  if (bl) tags.push(`<span class="tag-pill blmark">🚫 bloqué</span>`);
+  el.innerHTML =
+    avatarHtml(t) +
+    `<div class="tk-body">` +
+    `<div class="n">${pri}<span class="tk-name">${esc(ticketLabel(t))}</span>` +
+    `${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>` +
+    `<div class="p">${esc(t.last_preview || '')}</div>` +
+    (tags.length ? `<div class="tags">${tags.join('')}</div>` : '') +
+    `</div>`;
+  el.addEventListener('click', () => openTicket(t.user_id));
+  return el;
+}
+
+function updateFilterCounts() {
+  const all = [...tickets.values()];
+  const counts = {
+    open: all.filter((t) => t.status !== 'closed').length,
+    towait: all.filter((t) => t.status !== 'closed' && t.waiting === 'staff').length,
+    unassigned: all.filter((t) => t.status !== 'closed' && !t.assignee_id).length,
+    closed: all.filter((t) => t.status === 'closed').length,
+    all: all.length,
+  };
+  for (const [k, v] of Object.entries(counts)) {
+    const el = document.querySelector(`.fc[data-fc="${k}"]`);
+    if (el) el.textContent = v;
+  }
+}
+
+function renderSidebar() {
+  updateFilterCounts();
+  let list = [...tickets.values()];
+  if (filterMode === 'open') list = list.filter((t) => t.status !== 'closed');
+  else if (filterMode === 'closed')
+    list = list.filter((t) => t.status === 'closed');
+  else if (filterMode === 'unassigned')
+    list = list.filter((t) => t.status !== 'closed' && !t.assignee_id);
+  else if (filterMode === 'towait')
+    list = list.filter((t) => t.status !== 'closed' && t.waiting === 'staff');
+  if (advAssignee === 'me') list = list.filter((t) => t.assignee_id === myId);
+  else if (advAssignee === 'none') list = list.filter((t) => !t.assignee_id);
+  if (advPriority === 'high')
+    list = list.filter((t) => t.priority === 'high' || t.priority === 'urgent');
+  else if (advPriority === 'urgent')
+    list = list.filter((t) => t.priority === 'urgent');
+  if (searchIds) list = list.filter((t) => searchIds.has(t.user_id));
+
+  const box = $('#ticketList');
+  box.innerHTML = '';
+  if (!list.length) {
+    const [ico, why] = searchIds
+      ? ['🔍', 'Aucun résultat']
+      : filterMode === 'closed'
+        ? ['✅', 'Aucun ticket clôturé']
+        : filterMode === 'unassigned'
+          ? ['🖐️', 'Aucun ticket non assigné']
+          : filterMode === 'towait'
+            ? ['⏱', 'Rien à traiter']
+            : filterMode === 'open'
+              ? ['🎫', 'Aucun ticket ouvert']
+              : ['🎫', "Aucun ticket pour l'instant"];
+    const hint = filterMode === 'towait' ? 'Tout est en attente côté client.' : '';
+    box.innerHTML = emptyState(ico, why, hint);
+    updateTitle();
+    return;
+  }
+
+  const order = [NONE, ...categories];
+  const groups = new Map(order.map((k) => [k, []]));
+  for (const t of list) {
+    const key =
+      t.category && categories.includes(t.category) ? t.category : NONE;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(t);
+  }
+
+  for (const key of groups.keys()) {
+    const items = groups.get(key).sort((a, b) => {
+      const pa = PRI[a.priority] ?? 2;
+      const pb = PRI[b.priority] ?? 2;
+      return pa - pb || (b.updated_at || 0) - (a.updated_at || 0);
+    });
+    if (!items.length) continue;
+
+    const label = key === NONE ? 'Non trié' : key;
+    const collapsed = collapsedGroups.has(key);
+    const unread = items.reduce((n, t) => n + (t.unread || 0), 0);
+
+    const gh = document.createElement('div');
+    gh.className = 'grp';
+    gh.innerHTML =
+      `<span class="arw">${collapsed ? '▸' : '▾'}</span>${esc(label)}` +
+      `<span class="cnt">${items.length}</span>` +
+      `${unread ? `<span class="gbadge">${unread}</span>` : ''}`;
+    gh.addEventListener('click', () => {
+      if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+      else collapsedGroups.add(key);
+      renderSidebar();
+    });
+    box.appendChild(gh);
+
+    if (collapsed) continue;
+    for (const t of items) box.appendChild(ticketRow(t));
+  }
+  updateTitle();
+}
+
+function buildCatSelect() {
+  const sel = $('#catSelect');
+  sel.innerHTML =
+    `<option value="">— Non trié —</option>` +
+    categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+}
+
+function syncHeader() {
+  const t = current ? tickets.get(current) : null;
+  $('#headName').textContent = t ? ticketLabel(t) : current || '—';
+  $('#headWho').textContent = t
+    ? `${t.username} · ID ${current} · ${t.status}`
+    : '';
+  $('#backToList').classList.toggle('hidden', !t);
+  $('#renameBtn').classList.toggle('hidden', !t);
+  $('#ficheBtn').classList.toggle('hidden', !t);
+  $('#transcriptBtn').classList.toggle('hidden', !t);
+  $('#staffViewBtn').classList.toggle('hidden', !t);
+  $('#staffViewBtn').classList.toggle('on', staffOnly);
+  $('#reqRole').classList.toggle('hidden', !(t && assignRoles.some((r) => r.roleId)));
+  renderReqBanner();
+
+  const pri = $('#priSelect');
+  pri.classList.toggle('hidden', !t);
+  if (t) {
+    pri.value = t.priority || 'normal';
+    pri.classList.toggle('p-high', pri.value === 'high');
+    pri.classList.toggle('p-urgent', pri.value === 'urgent');
+  }
+
+  const mine = !!(t && t.assignee_id && t.assignee_id === myId);
+  $('#headAssignee').textContent =
+    t && t.assignee_id ? `🔒 ${mine ? 'toi' : t.assignee_name || '?'}` : '';
+
+  $('#closeBtn').classList.toggle('hidden', !t || t.status === 'closed');
+  $('#reopenBtn').classList.toggle('hidden', !t || t.status !== 'closed');
+  $('#deleteBtn').classList.toggle('hidden', !(t && settingsScope === 'owner'));
+  $('#macroBtn').classList.toggle('hidden', !(t && macros.length));
+
+  const block = $('#blockBtn');
+  const bl = !!(t && blacklist.has(String(t.user_id)));
+  block.classList.toggle('hidden', !t);
+  block.classList.toggle('on', bl);
+  block.textContent = bl ? '✅ Débloquer' : '🚫 Bloquer';
+
+  const take = $('#takeBtn');
+  // pris par un grade supérieur -> je ne peux pas le lui retirer
+  const lockedByHigher = !!(
+    t && t.assignee_id && !mine && (t.assignee_level || 1) > myLevel
+  );
+  take.classList.toggle('hidden', !t || lockedByHigher);
+  take.classList.toggle('mine', mine);
+  take.textContent = mine
+    ? 'Lâcher'
+    : t && t.assignee_id
+      ? 'Reprendre'
+      : 'Prendre';
+  $('#takeLock').classList.toggle('hidden', !lockedByHigher);
+
+  const cat = $('#catSelect');
+  cat.classList.toggle('hidden', !t);
+  if (t) {
+    cat.value = categories.includes(t.category) ? t.category : '';
+    cat.classList.toggle('unset', !cat.value);
+  }
+
+  const escSel = $('#escSelect');
+  const showEsc = !!t && maxLvl > 1;
+  escSel.classList.toggle('hidden', !showEsc);
+  if (showEsc) {
+    const cur = t.escalation_level || 1;
+    let html = '';
+    for (let L = 1; L <= maxLvl; L++) {
+      html +=
+        `<option value="${L}"${L === cur ? ' selected' : ''}>` +
+        `${L === cur ? '● ' : ''}${esc(levelName(L))}` +
+        `${L === cur ? ' (actuel)' : ''}</option>`;
+    }
+    escSel.innerHTML = html;
+  }
+}
+
+function openTicket(uid) {
+  current = uid;
+  const t = tickets.get(uid);
+  if (t) t.unread = 0;
+  $('#input').disabled = false;
+  $('#sendBtn').disabled = false;
+  $('#viewTickets').classList.add('show-convo'); // mobile : bascule vers la conversation
+  syncHeader();
+  renderSidebar();
+  if (msgCache.has(uid)) renderMessages();
+  else {
+    $('#msgs').innerHTML = '<div class="m system">Chargement…</div>';
+    ws.send(JSON.stringify({ type: 'open', userId: uid }));
+  }
+}
+
+$('#catSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'set_category',
+      userId: current,
+      category: e.target.value || null,
+    }),
+  );
+});
+
+$('#renameBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const v = window.prompt(
+    'Titre du ticket (vide = pseudo du client) :',
+    t?.title || '',
+  );
+  if (v === null) return;
+  ws.send(JSON.stringify({ type: 'rename', userId: current, title: v.trim() }));
+});
+
+$('#priSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({ type: 'priority', userId: current, priority: e.target.value }),
+  );
+});
+
+$('#reqRole').addEventListener('change', (e) => {
+  const roleId = e.target.value;
+  e.target.value = '';
+  if (roleId && current && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'request_role', userId: current, roleId }));
+    setStatus('Rôle demandé — les membres du rôle sont alertés.');
+  }
+});
+
+// rafraîchit les minuteurs SLA
+setInterval(() => {
+  if ($('#app').classList.contains('on') && $('#viewTickets').classList.contains('active')) {
+    renderSidebar();
+  }
+}, 30000);
+
+/* fiche membre + transcript */
+$('#ficheBtn').addEventListener('click', () => {
+  if (current && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'member', userId: current }));
+  }
+});
+$('#transcriptBtn').addEventListener('click', () => {
+  if (!current) return;
+  const a = document.createElement('a');
+  a.href = '/api/transcript/' + encodeURIComponent(current);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus('Transcript téléchargé.');
+});
+$('#memberSearch').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const q = e.target.value.trim();
+  if (q && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'member', query: q }));
+  }
+});
+$('#mmClose').addEventListener('click', () => $('#memberModal').classList.add('hidden'));
+$('#memberModal').addEventListener('click', (e) => {
+  if (e.target.id === 'memberModal') $('#memberModal').classList.add('hidden');
+});
+
+/* ---------------- réglages ---------------- */
+let settingsScope = 'colors';
+function fillSettings(s, scope) {
+  const owner = scope === 'owner';
+  $('#setOwnerBlock').classList.toggle('hidden', !owner);
+  $('#setAppLine').classList.toggle('hidden', !owner);
+  $('#setActions').classList.toggle('hidden', !owner);
+  $('#setLockNote').classList.toggle('hidden', owner);
+  $('#setStatus').textContent = '';
+  $('#appStatus').textContent = '';
+  syncAppearanceControls();
+  $('#setCats').value = (s.categories || categories).join('\n');
+  $('#setWelcome').value = s.welcome ? s.welcome.text : '';
+  $('#setWelcomeOn').checked = s.welcome ? s.welcome.enabled !== false : true;
+  $('#setClose').value = s.closeMessage
+    ? s.closeMessage.text
+    : "Ton ticket vient d'être clôturé. Merci de nous avoir contactés — écris-nous à nouveau si tu as besoin. ✅";
+  $('#setCloseOn').checked = s.closeMessage ? s.closeMessage.enabled !== false : true;
+  $('#setChan').value = s.staffChannelId || '';
+  $('#setPing').value = s.staffPingRoleId || '';
+  const th = s.theme || {};
+  $('#setAppName').value = th.appName || appName;
+  $('#setAccent').value = th.accent || '#ff9d00';
+  $('#setBg').value = th.bg || '#0a0a0c';
+  renderSetRoles(s.assignRoles || assignRoles || []);
+  $('#setSla').value = s.slaMinutes || slaMin;
+  $('#setAsk').checked = s.askCategory !== false;
+  const ac = s.autoClose || {};
+  $('#setAcOn').checked = !!ac.enabled;
+  $('#setAcWarn').value = ac.warnHours || 48;
+  $('#setAcClose').value = ac.closeHours || 72;
+  const fl = s.flood || {};
+  $('#setFlOn').checked = fl.enabled !== false;
+  $('#setFlCount').value = fl.count || 8;
+  $('#setFlWin').value = fl.windowSec || 15;
+  $('#setFlMute').value = fl.muteMin || 10;
+  const pn = s.panel || {};
+  $('#panelChan').value = pn.channelId || '';
+  $('#panelTitle').value = pn.title || '';
+  $('#panelBtn').value = pn.buttonLabel || '';
+  $('#panelDesc').value = pn.description || '';
+  $('#panelStatus').textContent = pn.messageId ? 'panneau publié' : '';
+  $('#setRateOn').checked = s.askRating !== false;
+  $('#setAnnounceChan').value = s.announceChannelId || '';
+  $('#setSanctionChan').value = s.sanctionChannelId || '';
+  $('#setReportChan').value = s.reportChannelId || '';
+  $('#setConvoChan').value = s.convoChannelId || '';
+  $('#setShopChan').value = s.shopChannelId || '';
+  $('#setBotText').value = (s.botStatus && s.botStatus.text) || '';
+  $('#setBotType').value = (s.botStatus && s.botStatus.type) || 'custom';
+  const sr = s.statsReset || {};
+  $('#setStatsResetOn').checked = !!sr.enabled;
+  $('#setStatsResetDays').value = sr.days || 7;
+  $('#statsResetStatus').textContent = sr.lastReset ? 'dernier reset : ' + ago(sr.lastReset) : 'jamais réinitialisé';
+  renderCatRoles(s.categoryRoles || []);
+  fillPermSelects(s.perms || {});
+  renderSetMacros(s.macros || []);
+}
+
+/* permissions par grade : options = niveaux (2..maxLvl) + owner-only (999) */
+const PERM_FIELDS = {
+  permAnnounce: 'announce', permRecruit: 'recruit', permBanners: 'banners',
+  permSanctions: 'sanctions', permShop: 'shop', permPanels: 'panels', permWebhooks: 'webhooks',
+  permOrgchart: 'orgchart', permRankup: 'rankup',
+};
+function permOptions(cur) {
+  let html = '';
+  for (let L = 2; L <= Math.max(2, maxLvl); L++) {
+    html += `<option value="${L}"${cur === L ? ' selected' : ''}>${esc(levelName(L))}${L === maxLvl ? '' : ' et +'}</option>`;
+  }
+  html += `<option value="999"${cur >= 999 ? ' selected' : ''}>Owner uniquement</option>`;
+  return html;
+}
+function fillPermSelects(pm) {
+  for (const [id, key] of Object.entries(PERM_FIELDS)) {
+    const el = $('#' + id);
+    if (el) el.innerHTML = permOptions(Number(pm[key]) || 999);
+  }
+}
+function gatherPerms() {
+  const out = {};
+  for (const [id, key] of Object.entries(PERM_FIELDS)) {
+    const el = $('#' + id);
+    if (el) out[key] = Number(el.value) || 999;
+  }
+  return out;
+}
+
+/* macros */
+function macroRow(name, text) {
+  const d = document.createElement('div');
+  d.className = 'setmacro';
+  d.innerHTML =
+    `<input class="mn" placeholder="Titre (ex : Bienvenue)" value="${esc(name || '')}" />` +
+    `<textarea class="mt" rows="2" placeholder="Texte… {name} = pseudo du client">${esc(text || '')}</textarea>` +
+    `<button class="rm linkbtn" type="button">✕</button>`;
+  d.querySelector('.rm').addEventListener('click', () => d.remove());
+  return d;
+}
+function renderSetMacros(rows) {
+  const box = $('#setMacros');
+  if (!box) return;
+  box.innerHTML = '';
+  (rows.length ? rows : []).forEach((r) => box.appendChild(macroRow(r.name, r.text)));
+}
+function gatherMacros() {
+  return [...document.querySelectorAll('#setMacros .setmacro')]
+    .map((d) => ({ name: d.querySelector('.mn').value.trim(), text: d.querySelector('.mt').value.trim() }))
+    .filter((m) => m.name && m.text);
+}
+
+/* responsables par catégorie : une ligne (catégorie -> ID rôle) */
+function renderCatRoles(rows) {
+  const box = $('#setCatRoles');
+  if (!box) return;
+  const map = {};
+  (rows || []).forEach((r) => { map[r.category] = r.roleId; });
+  box.innerHTML = categories
+    .map(
+      (c) =>
+        `<label class="setline"><span style="flex:0;min-width:140px">${esc(c)}</span>` +
+        `<input type="text" class="catrole" data-cat="${esc(c)}" placeholder="ID du rôle" value="${esc(map[c] || '')}" /></label>`,
+    )
+    .join('') || '<p class="muted">Ajoute des catégories d\'abord.</p>';
+}
+function gatherCatRoles() {
+  return [...document.querySelectorAll('#setCatRoles .catrole')]
+    .map((i) => ({ category: i.dataset.cat, roleId: i.value.trim() }))
+    .filter((r) => r.roleId);
+}
+
+function roleRow(name, rid) {
+  const d = document.createElement('div');
+  d.className = 'setrole';
+  d.innerHTML =
+    `<input class="nm" placeholder="Nom (ex : Resp Illegal)" value="${esc(name || '')}" />` +
+    `<input class="rid" placeholder="ID du rôle Discord (plus tard)" value="${esc(rid || '')}" />` +
+    `<button class="rm linkbtn" type="button">✕</button>`;
+  d.querySelector('.rm').addEventListener('click', () => d.remove());
+  return d;
+}
+function renderSetRoles(rows) {
+  const box = $('#setRoles');
+  box.innerHTML = '';
+  (rows.length ? rows : [{}]).forEach((r) => box.appendChild(roleRow(r.name, r.roleId)));
+}
+function gatherSetRoles() {
+  return [...$('#setRoles').querySelectorAll('.setrole')]
+    .map((d) => ({
+      name: d.querySelector('.nm').value.trim(),
+      roleId: d.querySelector('.rid').value.trim(),
+    }))
+    .filter((r) => r.name);
+}
+$('#setRoleAdd').addEventListener('click', () =>
+  $('#setRoles').appendChild(roleRow('', '')),
+);
+function livePreview() {
+  applyTheme({
+    appName: $('#setAppName').value.trim() || 'Volt Support',
+    accent: $('#setAccent').value,
+    bg: $('#setBg').value,
+  });
+}
+['#setAppName', '#setAccent', '#setBg'].forEach((sel) =>
+  $(sel).addEventListener('input', livePreview),
+);
+$('#setSave').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  if (settingsScope !== 'owner') return; // les non-owner n'ont que « Mon apparence »
+  const cats = $('#setCats').value
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  ws.send(
+    JSON.stringify({
+      type: 'save_settings',
+      patch: {
+        categories: cats,
+        welcome: { text: $('#setWelcome').value, enabled: $('#setWelcomeOn').checked },
+        closeMessage: { text: $('#setClose').value, enabled: $('#setCloseOn').checked },
+        staffChannelId: $('#setChan').value.trim(),
+        staffPingRoleId: $('#setPing').value.trim(),
+        assignRoles: gatherSetRoles(),
+        slaMinutes: Number($('#setSla').value) || 15,
+        askCategory: $('#setAsk').checked,
+        autoClose: {
+          enabled: $('#setAcOn').checked,
+          warnHours: Number($('#setAcWarn').value) || 48,
+          closeHours: Number($('#setAcClose').value) || 72,
+        },
+        flood: {
+          enabled: $('#setFlOn').checked,
+          count: Number($('#setFlCount').value) || 8,
+          windowSec: Number($('#setFlWin').value) || 15,
+          muteMin: Number($('#setFlMute').value) || 10,
+        },
+        panel: {
+          channelId: $('#panelChan').value.trim(),
+          title: $('#panelTitle').value.trim(),
+          buttonLabel: $('#panelBtn').value.trim(),
+          description: $('#panelDesc').value.trim(),
+        },
+        askRating: $('#setRateOn').checked,
+        announceChannelId: $('#setAnnounceChan').value.trim(),
+        sanctionChannelId: $('#setSanctionChan').value.trim(),
+        reportChannelId: $('#setReportChan').value.trim(),
+        convoChannelId: $('#setConvoChan').value.trim(),
+        shopChannelId: $('#setShopChan').value.trim(),
+        botStatus: { text: $('#setBotText').value, type: $('#setBotType').value },
+        statsReset: { enabled: $('#setStatsResetOn').checked, days: Number($('#setStatsResetDays').value) || 7 },
+        categoryRoles: gatherCatRoles(),
+        perms: gatherPerms(),
+        macros: gatherMacros(),
+        theme: {
+          appName: $('#setAppName').value.trim() || 'Volt Support',
+          accent: $('#setAccent').value,
+          bg: $('#setBg').value,
+        },
+      },
+    }),
+  );
+  $('#setStatus').textContent = 'enregistrement…';
+});
+$('#setReload').addEventListener('click', () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_settings' }));
+});
+$('#statsResetNowBtn').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  if (!confirm("Remettre à zéro le classement staff (réponses + satisfaction) maintenant ?")) return;
+  ws.send(JSON.stringify({ type: 'reset_stats_now' }));
+  $('#statsResetStatus').textContent = 'réinitialisé à l\'instant';
+});
+$('#obReview').addEventListener('click', () => showOnboarding(true));
+$('#backupBtn').addEventListener('click', () => {
+  const a = document.createElement('a');
+  a.href = '/api/backup';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus('Sauvegarde téléchargée.');
+});
+$('#setMacroAdd').addEventListener('click', () => $('#setMacros').appendChild(macroRow('', '')));
+$('#panelPublish').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  // on enregistre d'abord le contenu du panneau, puis on publie
+  $('#setSave').click();
+  $('#panelStatus').textContent = 'publication…';
+  ws.send(JSON.stringify({ type: 'publish_panel' }));
+});
+
+/* ---------------- modération : annonces + sanctions ---------------- */
+$('#annSend').addEventListener('click', () => {
+  const text = $('#annText').value.trim();
+  if (!text || !ws || ws.readyState !== 1) return;
+  $('#annSend').disabled = true;
+  $('#annStatus').textContent = 'publication…';
+  ws.send(JSON.stringify({ type: 'announce', text, channelId: $('#annChan').value.trim() }));
+});
+$('#sancAdd').addEventListener('click', () => {
+  const targetId = $('#sancId').value.trim();
+  const targetName = $('#sancName').value.trim();
+  const reason = $('#sancReason').value.trim();
+  if (!targetId || !ws || ws.readyState !== 1) return;
+  if (!window.confirm(`Ajouter une sanction à ${targetName || targetId} ?`)) return;
+  ws.send(JSON.stringify({ type: 'sanction_add', targetId, targetName, reason, channelId: $('#sancChan').value.trim() }));
+  $('#sancId').value = $('#sancName').value = $('#sancReason').value = '';
+});
+function renderSanctions(list) {
+  const box = $('#sancList');
+  if (!box) return;
+  const counts = {};
+  list.filter((s) => s.active).forEach((s) => { counts[s.targetId] = (counts[s.targetId] || 0) + 1; });
+  if (!list.length) {
+    box.innerHTML = emptyState('⚠', 'Aucune sanction', "L'équipe est clean — les sanctions actives apparaîtront ici.");
+    return;
+  }
+  box.innerHTML = list
+    .map((s) => {
+      const c = counts[s.targetId] || 0;
+      return (
+        `<div class="sanc-item${s.active ? '' : ' off'}${c >= 3 && s.active ? ' banned' : ''}">` +
+        `<div class="si-main"><strong>${esc(s.targetName)}</strong> ` +
+        `<span class="si-count">${c}/3</span>` +
+        `<div class="si-by">${esc(s.reason || 'sans raison')} — par ${esc(s.byName)} · ${new Date(s.at).toLocaleString('fr-FR')}</div></div>` +
+        (s.active
+          ? `<button class="linkbtn sc-del" data-id="${s.id}" type="button">retirer</button>`
+          : '<span class="muted">retirée</span>') +
+        `</div>`
+      );
+    })
+    .join('');
+  box.querySelectorAll('.sc-del').forEach((b) =>
+    b.addEventListener('click', () =>
+      ws.send(JSON.stringify({ type: 'sanction_del', id: Number(b.dataset.id) })),
+    ),
+  );
+}
+
+/* ---------------- journal des connexions (owner) ---------------- */
+function ago(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return "à l'instant";
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  return `il y a ${Math.floor(s / 86400)} j`;
+}
+function renderLogins(list, online) {
+  const box = $('#loginList');
+  if (!box) return;
+  const on = new Set((online || []).map(String));
+  if (!list.length) {
+    box.innerHTML = "<div class=\"muted\">Personne ne s'est encore connecté.</div>";
+    return;
+  }
+  box.innerHTML = list
+    .map((l) => {
+      const live = on.has(String(l.uid));
+      return (
+        `<div class="login-item${live ? ' live' : ''}">` +
+        `<span class="lg-dot"></span>` +
+        `<span class="lg-name">${esc(l.name)}` +
+        (l.roleName ? `<span class="lg-role">${esc(l.roleName)}</span>` : '') +
+        `</span>` +
+        `<span class="lg-first">1<sup>re</sup> connexion&nbsp;: ${new Date(l.firstAt).toLocaleString('fr-FR')}</span>` +
+        `<span class="lg-when">${live ? 'en ligne' : 'vu ' + ago(l.lastAt)}</span>` +
+        `</div>`
+      );
+    })
+    .join('');
+}
+
+/* ---------------- convocation ---------------- */
+let convTarget = null;
+let convSearchTimer = null;
+$('#convSearch').addEventListener('input', (e) => {
+  clearTimeout(convSearchTimer);
+  const q = e.target.value.trim();
+  convSearchTimer = setTimeout(() => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'members', q }));
+  }, 250);
+});
+function renderConvResults(m) {
+  // réutilise la réponse "members" quand on est sur l'onglet convocation
+  if (!$('#viewConvoke').classList.contains('active')) return;
+  const box = $('#convResults');
+  if (!m.members || !m.members.length) { box.innerHTML = ''; return; }
+  box.innerHTML = m.members
+    .slice(0, 30)
+    .map(
+      (mem) =>
+        `<button class="conv-r" type="button" data-id="${esc(mem.id)}" data-name="${esc(mem.name)}">` +
+        `${esc(mem.name)} <span class="muted">@${esc(mem.tag)}</span></button>`,
+    )
+    .join('');
+  box.querySelectorAll('.conv-r').forEach((b) =>
+    b.addEventListener('click', () => {
+      convTarget = { id: b.dataset.id, name: b.dataset.name };
+      $('#convTarget').textContent = `Convoquer : ${convTarget.name} (${convTarget.id})`;
+      $('#convTarget').classList.remove('hidden');
+      $('#convResults').innerHTML = '';
+      $('#convSearch').value = '';
+      $('#convSend').disabled = false;
+    }),
+  );
+}
+$('#convSend').addEventListener('click', () => {
+  if (!convTarget || !ws || ws.readyState !== 1) return;
+  $('#convSend').disabled = true;
+  $('#convStatus').textContent = 'envoi…';
+  ws.send(
+    JSON.stringify({
+      type: 'convoke',
+      targetId: convTarget.id,
+      targetName: convTarget.name,
+      reason: $('#convReason').value.trim(),
+      when: $('#convWhen').value.trim(),
+      text: $('#convText').value.trim(),
+    }),
+  );
+});
+function renderConvList(list) {
+  const box = $('#convList');
+  if (!box) return;
+  if (!list.length) { box.innerHTML = '<div class="muted">Aucune convocation.</div>'; return; }
+  box.innerHTML = list
+    .map(
+      (c) =>
+        `<div class="sug-item"><div class="si-main"><strong>${esc(c.targetName)}</strong>` +
+        (c.reason ? ` — ${esc(c.reason)}` : '') +
+        (c.when ? ` <span class="muted">(${esc(c.when)})</span>` : '') +
+        `<div class="si-by">par ${esc(c.byName)} · ${new Date(c.at).toLocaleString('fr-FR')}</div></div></div>`,
+    )
+    .join('');
+}
+
+/* ---------------- panneaux « Reprise » ---------------- */
+const PST = { ok: '🟩 dispo', no: '🟥 indispo', slot: '🟩 slot libre' };
+let panelsCache = [];
+function renderPanelList(list) {
+  panelsCache = list;
+  const box = $('#panelList');
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list
+        .map(
+          (p) =>
+            `<div class="panel-row"><span>${esc(p.name)}${p.messageId ? ' <span class="muted">· publié</span>' : ''}</span>` +
+            `<span class="pr-btns"><button class="linkbtn pr-edit" data-id="${p.id}" type="button">éditer</button>` +
+            `<button class="linkbtn pr-pub" data-id="${p.id}" type="button">publier</button>` +
+            `<button class="linkbtn pr-del" data-id="${p.id}" type="button">🗑</button></span></div>`,
+        )
+        .join('')
+    : '<div class="muted">Aucun panneau.</div>';
+  box.querySelectorAll('.pr-edit').forEach((b) =>
+    b.addEventListener('click', () => openPanelEditor(panelsCache.find((x) => x.id == b.dataset.id))),
+  );
+  box.querySelectorAll('.pr-pub').forEach((b) =>
+    b.addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'publish_reprise', id: Number(b.dataset.id) }));
+      setStatus('Publication du panneau…');
+    }),
+  );
+  box.querySelectorAll('.pr-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Supprimer ce panneau ? (le message Discord reste)'))
+        ws.send(JSON.stringify({ type: 'delete_panel', id: Number(b.dataset.id) }));
+    }),
+  );
+}
+$('#panelNew').addEventListener('click', () => openPanelEditor(null));
+function secRow(sec) {
+  const d = document.createElement('div');
+  d.className = 'pe-sec';
+  d.innerHTML =
+    `<input class="pe-shead" placeholder="Titre de section (ex : 🏛️ Organisation)" value="${esc(sec?.header || '')}" />` +
+    `<div class="pe-items"></div>` +
+    `<button class="linkbtn pe-add-item" type="button">+ ligne</button> ` +
+    `<button class="linkbtn pe-rm-sec" type="button">supprimer la section</button>`;
+  const itemsBox = d.querySelector('.pe-items');
+  const addItem = (it) => {
+    const r = document.createElement('div');
+    r.className = 'pe-item';
+    r.innerHTML =
+      `<input class="pe-ilabel" placeholder="Nom (ex : Cartel de Cayo Perico)" value="${esc(it?.label || '')}" />` +
+      `<select class="pe-istatus">` +
+      ['no', 'ok', 'slot'].map((k) => `<option value="${k}"${it?.status === k ? ' selected' : ''}>${PST[k]}</option>`).join('') +
+      `</select><button class="linkbtn pe-rm-item" type="button">✕</button>`;
+    r.querySelector('.pe-rm-item').addEventListener('click', () => r.remove());
+    itemsBox.appendChild(r);
+  };
+  (sec?.items && sec.items.length ? sec.items : [{}]).forEach(addItem);
+  d.querySelector('.pe-add-item').addEventListener('click', () => addItem({}));
+  d.querySelector('.pe-rm-sec').addEventListener('click', () => d.remove());
+  return d;
+}
+function openPanelEditor(p) {
+  const box = $('#panelEditor');
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<input type="hidden" id="peId" value="${p?.id || ''}" />` +
+    `<label class="setline">Nom interne <input type="text" id="peName" value="${esc(p?.name || 'Reprise Groupes')}" /></label>` +
+    `<label class="setline">Salon <input type="text" id="peChan" value="${esc(p?.channelId || '')}" placeholder="ID du salon" /></label>` +
+    `<label class="setline">Titre de l'embed <input type="text" id="peTitle" value="${esc(p?.title || '')}" placeholder="🕵️ • Reprise Groupes :" /></label>` +
+    `<textarea id="peDesc" rows="2" placeholder="Voici les différents groupes disponibles à la reprise :">${esc(p?.description || '')}</textarea>` +
+    `<label class="setline">Couleur <input type="color" id="peColor" value="${esc(p?.color || '#ff9d00')}" /></label>` +
+    `<label class="setline">Bannière (URL image) <input type="text" id="peBanner" value="${esc(p?.bannerUrl || '')}" placeholder="https://…/dossiers.png" /></label>` +
+    `<label class="setline">Icône (URL, en haut à droite) <input type="text" id="peIcon" value="${esc(p?.iconUrl || '')}" placeholder="https://…/logo.png" /></label>` +
+    `<label class="setline">Pied de page <input type="text" id="peFooter" value="${esc(p?.footer || '')}" placeholder="Pour une reprise, ouvre un ticket." /></label>` +
+    `<label class="setline">Pastilles <select id="peStatus">` +
+    `<option value="circle"${(p?.statusStyle || 'circle') === 'circle' ? ' selected' : ''}>🟢 🔴 ronds</option>` +
+    `<option value="square"${p?.statusStyle === 'square' ? ' selected' : ''}>🟩 🟥 carrés</option></select></label>` +
+    `<label class="setline">Emoji « dispo » <input type="text" id="peEmOk" value="${esc(p?.emojiOk || '')}" placeholder="<a:vert:123…>  (vide = pastille)" /></label>` +
+    `<label class="setline">Emoji « indispo » <input type="text" id="peEmNo" value="${esc(p?.emojiNo || '')}" placeholder="<a:rouge:123…>" /></label>` +
+    `<label class="setline">Emoji « slot libre » <input type="text" id="peEmSlot" value="${esc(p?.emojiSlot || '')}" placeholder="(vide = comme « dispo »)" /></label>` +
+    `<p class="muted" style="margin:2px 0 8px">Emoji perso : dans Discord tape <code>\\:nom:</code> (ex <code>\\:vert:</code>) puis colle ce que ça donne (<code>&lt;a:vert:123…&gt;</code>). Le bot doit être sur le serveur de l'emoji. La bannière/icône sont téléchargées et jointes au message → mets un lien direct vers une image (<code>.png</code>, <code>.jpg</code> ou <code>.gif</code> pour une bannière animée).</p>` +
+    `<div id="peSections"></div>` +
+    `<button id="peAddSec" class="linkbtn" type="button">+ Ajouter une section</button>` +
+    `<div class="mm-actions" style="margin-top:14px">` +
+    `<button id="peSave" class="btn-accent" type="button">Enregistrer</button>` +
+    `<button id="pePublish" class="btn-accent" type="button">Enregistrer + Publier</button>` +
+    `<button id="peClose" class="linkbtn" type="button">Fermer</button></div>`;
+  const secBox = $('#peSections');
+  (p?.sections && p.sections.length ? p.sections : [{ header: '', items: [{}] }]).forEach((s) =>
+    secBox.appendChild(secRow(s)),
+  );
+  $('#peAddSec').addEventListener('click', () => secBox.appendChild(secRow({ items: [{}] })));
+  $('#peClose').addEventListener('click', () => box.classList.add('hidden'));
+  $('#peSave').addEventListener('click', () => savePanel(false));
+  $('#pePublish').addEventListener('click', () => savePanel(true));
+}
+function gatherPanel() {
+  const sections = [...$('#peSections').querySelectorAll('.pe-sec')].map((d) => ({
+    header: d.querySelector('.pe-shead').value.trim(),
+    items: [...d.querySelectorAll('.pe-item')]
+      .map((r) => ({
+        label: r.querySelector('.pe-ilabel').value.trim(),
+        status: r.querySelector('.pe-istatus').value,
+      }))
+      .filter((it) => it.label),
+  }));
+  return {
+    id: Number($('#peId').value) || undefined,
+    name: $('#peName').value.trim(),
+    channelId: $('#peChan').value.trim(),
+    title: $('#peTitle').value.trim(),
+    description: $('#peDesc').value.trim(),
+    color: $('#peColor').value,
+    bannerUrl: $('#peBanner').value.trim(),
+    iconUrl: $('#peIcon').value.trim(),
+    footer: $('#peFooter').value.trim(),
+    statusStyle: $('#peStatus').value,
+    emojiOk: $('#peEmOk').value.trim(),
+    emojiNo: $('#peEmNo').value.trim(),
+    emojiSlot: $('#peEmSlot').value.trim(),
+    sections,
+  };
+}
+let pendingPublishId = null;
+function savePanel(alsoPublish) {
+  if (!ws || ws.readyState !== 1) return;
+  const panel = gatherPanel();
+  pendingPublishId = alsoPublish ? true : null;
+  ws.send(JSON.stringify({ type: 'save_panel', panel }));
+  setStatus('Enregistrement du panneau…');
+}
+/* ---------------- boutique ---------------- */
+$('#shopSend').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  $('#shopSend').disabled = true;
+  $('#shopStatus').textContent = 'publication…';
+  ws.send(
+    JSON.stringify({
+      type: 'shop_announce',
+      title: $('#shopTitle').value.trim(),
+      text: $('#shopText').value.trim(),
+      bannerUrl: $('#shopBanner').value.trim(),
+      linkUrl: $('#shopLink').value.trim(),
+      linkLabel: $('#shopLinkLabel').value.trim(),
+      channelId: $('#shopChanOverride').value.trim(),
+    }),
+  );
+});
+
+/* ---------------- recrutement ---------------- */
+function fillRecruit(r) {
+  $('#recChan').value = r.channelId || '';
+  $('#recRole').value = r.roleId || '';
+  $('#recForm').value = r.formUrl || '';
+  $('#recBanner').value = r.bannerUrl || '';
+  $('#recTextOpen').value = r.textOpen || '';
+  $('#recTextClosed').value = r.textClosed || '';
+  const st = $('#recState');
+  st.textContent = r.open ? '🟢 OUVERTS' : '🔴 FERMÉS';
+  st.classList.toggle('open', !!r.open);
+  $('#recToggle').textContent = r.open ? 'Fermer les recrutements' : 'Ouvrir les recrutements';
+  $('#recToggle').dataset.next = r.open ? '0' : '1';
+  if (r.error) setStatus(`Recrutement : ${r.error}`);
+  else if (r.published) setStatus(r.open ? '✓ recrutements ouverts (posté)' : '✓ recrutements fermés (posté)');
+}
+function sendRecruitSave() {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'recruit_save',
+      channelId: $('#recChan').value.trim(),
+      roleId: $('#recRole').value.trim(),
+      formUrl: $('#recForm').value.trim(),
+      bannerUrl: $('#recBanner').value.trim(),
+      textOpen: $('#recTextOpen').value,
+      textClosed: $('#recTextClosed').value,
+    }),
+  );
+}
+$('#recSave').addEventListener('click', () => {
+  sendRecruitSave();
+  setStatus('Réglages recrutement enregistrés.');
+});
+$('#recToggle').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  sendRecruitSave(); // enregistre les champs d'abord
+  ws.send(JSON.stringify({ type: 'recruit_toggle', open: $('#recToggle').dataset.next === '1' }));
+});
+
+/* ---------------- webhooks entrants ---------------- */
+function renderHooks(list) {
+  const box = $('#hookList');
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list
+        .map(
+          (h) =>
+            `<div class="hook-row"><div><strong>${esc(h.label || h.kind)}</strong> ` +
+            `<span class="muted">· salon ${esc(h.channelId || '?')} · ${h.hits || 0} appels</span>` +
+            `<div class="hook-url">${location.origin}/api/hook/${esc(h.secret)}</div></div>` +
+            `<button class="linkbtn hk-del" data-id="${h.id}" type="button">🗑</button></div>`,
+        )
+        .join('')
+    : '<div class="muted">Aucun webhook.</div>';
+  box.querySelectorAll('.hk-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Supprimer ce webhook ? Les services qui l\'utilisent cesseront de fonctionner.'))
+        ws.send(JSON.stringify({ type: 'del_hook', id: Number(b.dataset.id) }));
+    }),
+  );
+}
+$('#hookAdd').addEventListener('click', () => {
+  if (!ws || ws.readyState !== 1) return;
+  ws.send(
+    JSON.stringify({
+      type: 'add_hook',
+      kind: 'generic',
+      label: $('#hookLabel').value.trim(),
+      channelId: $('#hookChan').value.trim(),
+    }),
+  );
+  $('#hookLabel').value = $('#hookChan').value = '';
+});
+
+/* ---------------- statut de présence + inactivité ---------------- */
+let manualStatus = 'online';
+let idle = false;
+let lastActive = Date.now();
+function pushStatus() {
+  if (!ws || ws.readyState !== 1) return;
+  const eff = manualStatus !== 'online' ? manualStatus : idle ? 'idle' : 'online';
+  ws.send(JSON.stringify({ type: 'set_status', status: eff }));
+}
+$('#myStatus').addEventListener('change', (e) => {
+  manualStatus = e.target.value;
+  pushStatus();
+});
+['mousemove', 'keydown', 'pointerdown', 'touchstart', 'wheel'].forEach((ev) =>
+  window.addEventListener(
+    ev,
+    () => {
+      lastActive = Date.now();
+      if (idle) { idle = false; pushStatus(); }
+    },
+    { passive: true },
+  ),
+);
+const AUTO_LOGOUT_MS = 60 * 60000; // 1h sans la moindre activité -> déconnexion auto (sécurité, poste partagé/public)
+setInterval(() => {
+  const now = Date.now();
+  const nextIdle = now - lastActive > 600000; // 10 min sans activité
+  if (nextIdle !== idle) { idle = nextIdle; pushStatus(); }
+  const inactiveMs = now - lastActive;
+  if (inactiveMs > AUTO_LOGOUT_MS) {
+    location.href = '/auth/logout';
+  } else if (inactiveMs > AUTO_LOGOUT_MS - 120000) {
+    setStatus('⏳ Déconnexion automatique dans moins de 2 min par inactivité — bouge la souris pour rester connecté.');
+  }
+}, 30000);
+
+// Ctrl+V d'une image n'importe où quand un ticket est ouvert
+document.addEventListener('paste', (e) => {
+  if (e.defaultPrevented || !current) return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'TEXTAREA') return; // laisse coller le texte dans les zones de texte
+  const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith('image/'));
+  if (!item) return;
+  e.preventDefault();
+  uploadAttachment(item.getAsFile());
+});
+
+/* ---------------- mon apparence (perso, visible par moi seul) ---------------- */
+function syncAppearanceControls() {
+  const sel = $('#appPreset');
+  const col = $('#appAccent');
+  if (sel) sel.value = myPref && PRESETS[myPref.preset] ? myPref.preset : 'default';
+  if (col)
+    col.value =
+      myPref && isHex(myPref.accent) ? myPref.accent : serverTheme.accent || '#ff9d00';
+}
+function persistAppearance() {
+  savePref();
+  renderAppearance();
+  if (ws && ws.readyState === 1) {
+    ws.send(
+      JSON.stringify({
+        type: 'save_appearance',
+        preset: myPref ? myPref.preset : 'default',
+        accent: myPref && myPref.accent ? myPref.accent : null,
+      }),
+    );
+  }
+  const st = $('#appStatus');
+  if (st) st.textContent = 'enregistré ✓';
+}
+$('#appPreset').addEventListener('change', (e) => {
+  const v = e.target.value;
+  const accent = myPref && isHex(myPref.accent) ? myPref.accent : null;
+  myPref = v === 'default' && !accent ? null : { preset: v, accent };
+  persistAppearance();
+});
+$('#appAccent').addEventListener('input', (e) => {
+  const preset = myPref && PRESETS[myPref.preset] ? myPref.preset : 'default';
+  myPref = { preset, accent: e.target.value };
+  savePref();
+  renderAppearance(); // aperçu fluide pendant qu'on choisit
+});
+$('#appAccent').addEventListener('change', () => persistAppearance());
+$('#appReset').addEventListener('click', () => {
+  myPref = null;
+  persistAppearance();
+  syncAppearanceControls();
+});
+
+$('#staffViewBtn').addEventListener('click', () => {
+  staffOnly = !staffOnly;
+  $('#staffViewBtn').classList.toggle('on', staffOnly);
+  renderMessages();
+});
+
+$('#takeBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const mine = !!(t && t.assignee_id === myId);
+  ws.send(JSON.stringify({ type: 'assign', userId: current, take: !mine }));
+});
+
+$('#blockBtn').addEventListener('click', () => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const on = !blacklist.has(String(current));
+  if (
+    on &&
+    !window.confirm(
+      "Bloquer ce client ? Ses futurs MP au bot seront ignorés (aucun ticket créé).",
+    )
+  )
+    return;
+  ws.send(JSON.stringify({ type: 'blacklist', userId: current, on }));
+});
+
+$('#escSelect').addEventListener('change', (e) => {
+  if (!current || !ws || ws.readyState !== 1) return;
+  const t = tickets.get(current);
+  const cur = (t && t.escalation_level) || 1;
+  const target = parseInt(e.target.value, 10);
+  if (!target || target === cur) return;
+  const up = target > cur;
+  const ok = window.confirm(
+    up
+      ? `Escalader ce ticket vers « ${levelName(target)} » ?\n\n` +
+          `Les staff en dessous de ce niveau perdront l'accès au ticket ` +
+          `(toi aussi si tu n'es pas au moins « ${levelName(target)} »).`
+      : `Redescendre ce ticket vers « ${levelName(target)} » ?`,
+  );
+  if (!ok) {
+    syncHeader();
+    return;
+  }
+  ws.send(JSON.stringify({ type: 'escalate', userId: current, level: target }));
+});
+
+function renderMessages() {
+  let arr = msgCache.get(current) || [];
+  if (staffOnly) arr = arr.filter((m) => m.author !== 'client');
+  const box = $('#msgs');
+  box.innerHTML = '';
+  if (!arr.length) {
+    box.innerHTML = `<div class="m system">${
+      staffOnly ? 'Aucun message staff.' : 'Aucun message.'
+    }</div>`;
+    return;
+  }
+  for (const msg of arr) {
+    const el = document.createElement('div');
+    el.className = 'm ' + msg.author;
+    let html =
+      `<div class="meta">${esc(msg.author_name)} · ` +
+      `${new Date(msg.created_at).toLocaleString()}</div>${esc(msg.content)}`;
+    for (const a of msg.attachments || []) {
+      const isImg =
+        (a.contentType || '').startsWith('image/') ||
+        /\.(png|jpe?g|gif|webp)$/i.test(a.url || '');
+      html += isImg
+        ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">` +
+          `<img class="att" src="${esc(a.url)}" alt="${esc(a.name || '')}"></a>`
+        : `<a class="attfile" href="${esc(a.url)}" target="_blank" rel="noopener">` +
+          `📎 ${esc(a.name || 'fichier')}</a>`;
+    }
+    el.innerHTML = html;
+    box.appendChild(el);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------------- envoi ---------------- */
+const noteCheck = $('#noteCheck');
+
+function updateNoteMode() {
+  const on = noteCheck.checked;
+  $('#composer').classList.toggle('note-mode', on);
+  $('#input').placeholder = on
+    ? 'Note interne (visible staff uniquement)…'
+    : 'Écris ta réponse au client…';
+  $('#sendBtn').textContent = on ? 'Ajouter' : 'Envoyer';
+}
+noteCheck.addEventListener('change', updateNoteMode);
+
+function send() {
+  const v = $('#input').value.trim();
+  if (!v || !current || !ws || ws.readyState !== 1) return;
+  const type = noteCheck.checked ? 'note' : 'reply';
+  ws.send(JSON.stringify({ type, userId: current, content: v }));
+  $('#input').value = '';
+}
+$('#sendBtn').addEventListener('click', send);
+$('#input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+
+/* ---------------- pièce jointe staff -> client ---------------- */
+async function uploadAttachment(file) {
+  if (!file || !current) return;
+  setStatus(`Envoi de ${file.name || 'image'}…`);
+  const fd = new FormData();
+  fd.append('userId', current); // AVANT le fichier (champs lus dans l'ordre)
+  fd.append('caption', $('#input').value.trim());
+  fd.append('file', file, file.name || 'image.png');
+  try {
+    const r = await fetch('/api/attach', {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: fd,
+    });
+    if (r.ok) {
+      $('#input').value = '';
+      setStatus('Pièce jointe envoyée.');
+    } else {
+      const j = await r.json().catch(() => ({}));
+      setStatus(`Échec envoi pièce jointe (${j.error || r.status}).`);
+    }
+  } catch (err) {
+    setStatus('Échec envoi pièce jointe : ' + (err.message || err));
+  }
+}
+$('#attachBtn').addEventListener('click', () => {
+  if (current) $('#fileInput').click();
+});
+$('#fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  uploadAttachment(file);
+});
+// coller une image directement (Ctrl+V) dans le champ de réponse
+$('#input').addEventListener('paste', (e) => {
+  const item = [...(e.clipboardData?.items || [])].find((it) =>
+    it.type.startsWith('image/'),
+  );
+  if (!item || !current) return;
+  e.preventDefault();
+  uploadAttachment(item.getAsFile());
+});
+$('#closeBtn').addEventListener('click', () => {
+  if (current) ws.send(JSON.stringify({ type: 'close', userId: current }));
+});
+$('#reopenBtn').addEventListener('click', () => {
+  if (current) ws.send(JSON.stringify({ type: 'reopen', userId: current }));
+});
+$('#deleteBtn').addEventListener('click', () => {
+  if (!current || settingsScope !== 'owner') return;
+  const t = tickets.get(current);
+  if (
+    window.confirm(
+      `Supprimer DÉFINITIVEMENT le ticket de « ${t ? ticketLabel(t) : current} » ?\n\n` +
+        `Le ticket, tous ses messages et son historique seront effacés. Impossible à récupérer.`,
+    )
+  ) {
+    ws.send(JSON.stringify({ type: 'delete_ticket', userId: current }));
+  }
+});
+
+// se reconnecter quand l'onglet redevient actif si la socket est tombée
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && ws && ws.readyState === 3) connect();
+});

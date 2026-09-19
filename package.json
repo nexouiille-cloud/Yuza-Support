@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Yuza Support — bot Discord relais de tickets + interface staff web (DM = ticket)",
   "scripts": {
+    "build": "node scripts/build.js",
+    "postinstall": "node scripts/build.js",
+    "prestart": "node scripts/build.js",
+    "preserver": "node scripts/build.js",
     "server": "node server/index.js",
     "start": "node server/index.js",
     "launcher": "electron launcher/main.js"
@@ -23,6 +27,8 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "esbuild": "^0.28.2",
+    "javascript-obfuscator": "^5.7.0"
   }
 }
