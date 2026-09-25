@@ -359,20 +359,21 @@ export async function publishGiveaway(g) {
   if (!ch || !ch.isTextBased()) throw new Error('salon introuvable');
 
   const rules = [];
-  if (g.reqMessages > 0) rules.push(`💬 Avoir envoyé **${g.reqMessages}** messages sur le serveur depuis ta participation`);
-  if (g.reqInvites > 0) rules.push(`🔗 Avoir amené **${g.reqInvites}** invitations depuis ta participation`);
-  const desc =
-    (g.description ? g.description.trim() + '\n\n' : '') +
-    `Réagis avec ${g.emoji} pour participer !` +
-    (rules.length ? `\n\n**Conditions à remplir :**\n${rules.join('\n')}` : '') +
-    `\n\n🏆 **${g.winnersCount}** gagnant${g.winnersCount > 1 ? 's' : ''}` +
-    (g.endsAt ? `\n⏰ Tirage <t:${Math.floor(g.endsAt / 1000)}:R>` : '');
+  if (g.reqMessages > 0) rules.push(`💬 **${g.reqMessages}** messages envoyés depuis ta participation`);
+  if (g.reqInvites > 0) rules.push(`🔗 **${g.reqInvites}** invitations amenées depuis ta participation`);
 
   const embed = new EmbedBuilder()
     .setColor(0xff9d00)
     .setTitle(`🎉 ${g.title}`)
-    .setDescription(desc.slice(0, 4096));
-  if (g.prize) embed.addFields({ name: 'Lot', value: g.prize });
+    .setDescription(
+      `${g.description ? g.description.trim() + '\n\n' : ''}Réagis avec ${g.emoji} pour participer !`.slice(0, 4096),
+    )
+    .addFields(
+      { name: '🏆 Lot', value: g.prize || '—', inline: true },
+      { name: '🎟️ Gagnants', value: String(g.winnersCount), inline: true },
+    );
+  if (g.endsAt) embed.addFields({ name: '⏰ Fin', value: `<t:${Math.floor(g.endsAt / 1000)}:R>`, inline: true });
+  if (rules.length) embed.addFields({ name: '📋 Conditions', value: rules.join('\n') });
 
   let m;
   if (g.messageId) {
@@ -380,7 +381,9 @@ export async function publishGiveaway(g) {
     catch { m = null; }
   }
   if (!m) {
-    m = await ch.send({ embeds: [embed] });
+    const content = g.pingEveryone ? '@everyone' : undefined;
+    const allowedMentions = g.pingEveryone ? { parse: ['everyone'] } : { parse: [] };
+    m = await ch.send({ content, embeds: [embed], allowedMentions });
     try { await m.react(g.emoji); } catch (e) { console.error('[bot] réaction giveaway impossible (emoji invalide ?) :', e?.message || e); }
   }
   setGiveawayMessage(g.id, g.channelId, m.id);
@@ -396,12 +399,13 @@ export async function drawGiveaway(id) {
     const mentions = g.winners.map((w) => `<@${w.uid}>`).join(', ');
     const embed = new EmbedBuilder()
       .setColor(0x43d162)
-      .setTitle(`🎉 Giveaway terminé — ${g.title}`)
-      .setDescription(
-        g.winners.length
-          ? `Félicitations ${mentions} !${g.prize ? `\n🏆 ${g.prize}` : ''}`
-          : "Aucun participant éligible — pas de gagnant cette fois.",
+      .setTitle(`🎉 ${g.title}`)
+      .addFields(
+        { name: g.winners.length > 1 ? 'Gagnants' : 'Gagnant', value: g.winners.length ? mentions : 'Aucun participant éligible', inline: true },
+        { name: 'Terminé', value: `<t:${Math.floor(Date.now() / 1000)}:R>`, inline: true },
+        { name: 'Participants', value: String(Object.keys(g.participants || {}).length), inline: true },
       );
+    if (g.prize) embed.addFields({ name: '🏆 Lot', value: g.prize });
     await ch.send({ embeds: [embed], allowedMentions: { users: g.winners.map((w) => w.uid) } });
     if (g.messageId) {
       try {

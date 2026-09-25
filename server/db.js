@@ -1188,6 +1188,7 @@ function cleanGiveawayInput(g) {
     reqMessages: Math.max(0, Number(g.reqMessages) || 0),
     reqInvites: Math.max(0, Number(g.reqInvites) || 0),
     endsAt: g.endsAt ? Number(g.endsAt) || null : null,
+    pingEveryone: !!g.pingEveryone,
   };
 }
 export function listGiveaways() {

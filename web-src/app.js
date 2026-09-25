@@ -3255,7 +3255,8 @@ function openGiveawayEditor(g) {
     `<label>Exiger un nombre d'invitations depuis la participation :</label>` +
     `<input type="number" id="geReqInv" min="1" value="${g?.reqInvites || 3}" /></div>` +
     `<label class="setline">Tirage automatique à (optionnel, laisse vide pour manuel uniquement) <input type="datetime-local" id="geEndsAt" value="${toLocalDatetimeInput(g?.endsAt)}" /></label>` +
-    `<p class="muted" style="margin:2px 0 8px">Le bot ajoute lui-même la réaction sur le message. Republier un giveaway déjà publié met juste à jour le texte (pas les participants).</p>` +
+    `<label class="setline"><input type="checkbox" id="gePing" ${g?.pingEveryone ? 'checked' : ''} style="width:16px;height:16px" /> 🔔 Ping @everyone à la publication (prévient tout le serveur)</label>` +
+    `<p class="muted" style="margin:2px 0 8px">Le bot ajoute lui-même la réaction sur le message. Republier un giveaway déjà publié met juste à jour le texte (pas les participants, ni le ping).</p>` +
     `<div class="mm-actions">` +
     `<button id="geSave" class="btn-accent" type="button">Enregistrer</button>` +
     `<button id="gePublish" class="btn-accent" type="button">Enregistrer + Publier</button>` +
@@ -3277,6 +3278,7 @@ function gatherGiveaway() {
     reqMessages: $('#geReqMsgOn').checked ? Number($('#geReqMsg').value) || 0 : 0,
     reqInvites: $('#geReqInvOn').checked ? Number($('#geReqInv').value) || 0 : 0,
     endsAt: endsAtVal ? new Date(endsAtVal).getTime() : null,
+    pingEveryone: $('#gePing').checked,
   };
 }
 function saveGiveaway(alsoPublish) {
