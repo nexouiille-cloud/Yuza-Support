@@ -117,7 +117,7 @@ app.get('/auth/callback', async (req, reply) => {
     }
     reply.setCookie(SESSION_COOKIE, result.session, {
       ...baseCookie,
-      maxAge: 60 * 60 * 12, // 12 h
+      maxAge: config.sessionMaxAgeMs / 1000,
     });
     return reply.redirect('/');
   } catch (err) {

@@ -96,6 +96,10 @@ export const config = {
   oauthRedirectUri:
     process.env.OAUTH_REDIRECT_URI || `http://127.0.0.1:${port}/auth/callback`,
   sessionSecret: req('SESSION_SECRET'),
+  // durée de la session de connexion (cookie + jeton signé) — 30 j par défaut pour éviter de
+  // repasser par l'écran Discord trop souvent ; l'accès reste coupé en direct si le rôle staff
+  // est retiré (recheck périodique côté WS, indépendant de cette durée).
+  sessionMaxAgeMs: Number(process.env.SESSION_MAX_AGE_DAYS || 30) * 24 * 60 * 60 * 1000,
   staffSuffix: process.env.STAFF_SUFFIX || '(Staff)',
   roleRecheckSeconds: Number(process.env.ROLE_RECHECK_SECONDS || 300),
   categories: loadCategories(),

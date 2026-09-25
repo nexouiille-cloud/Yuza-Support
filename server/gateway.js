@@ -18,6 +18,8 @@ import {
   publishRecruit,
   getMemberAvatar,
   postRankupChanges,
+  publishGiveaway,
+  drawGiveaway,
 } from './bot.js';
 import { pushToLevel, vapidPublicKey } from './push.js';
 import {
@@ -101,6 +103,12 @@ import {
   effectiveStatsReset,
   resetStatsNow,
   maybeAutoResetStats,
+  listGiveaways,
+  getGiveaway,
+  upsertGiveaway,
+  deleteGiveaway,
+  listGiveawayParticipants,
+  dueGiveaways,
 } from './db.js';
 
 /** @type {Set<{socket:any, session:any, level:number, ready:boolean}>} */
@@ -979,6 +987,58 @@ export function registerGateway(app) {
         return;
       }
 
+      /* ---- giveaways ---- */
+      if (msg.type === 'get_giveaways') {
+        if (!entry.can.giveaway) return;
+        send(entry, { type: 'giveaways', list: listGiveaways() });
+        return;
+      }
+      if (msg.type === 'save_giveaway') {
+        if (!entry.can.giveaway) return;
+        const saved = upsertGiveaway(msg.giveaway || {}, session.uid, session.name);
+        for (const c of clients) if (c.can?.giveaway) send(c, { type: 'giveaways', list: listGiveaways() });
+        send(entry, { type: 'giveaway_saved', ok: true, id: saved.id });
+        logAct(session, 'giveaway', null, `giveaway « ${saved.title} » enregistré`);
+        return;
+      }
+      if (msg.type === 'delete_giveaway') {
+        if (!entry.can.giveaway) return;
+        deleteGiveaway(msg.id | 0);
+        for (const c of clients) if (c.can?.giveaway) send(c, { type: 'giveaways', list: listGiveaways() });
+        return;
+      }
+      if (msg.type === 'publish_giveaway') {
+        if (!entry.can.giveaway) return;
+        const g = getGiveaway(msg.id | 0);
+        if (!g) { send(entry, { type: 'giveaway_published', ok: false, error: 'introuvable' }); return; }
+        try {
+          await publishGiveaway(g);
+          for (const c of clients) if (c.can?.giveaway) send(c, { type: 'giveaways', list: listGiveaways() });
+          send(entry, { type: 'giveaway_published', ok: true, id: g.id });
+          logAct(session, 'giveaway', null, `giveaway « ${g.title} » publié`);
+        } catch (e) {
+          send(entry, { type: 'giveaway_published', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+      if (msg.type === 'get_giveaway_entries') {
+        if (!entry.can.giveaway) return;
+        send(entry, { type: 'giveaway_entries', id: msg.id | 0, list: listGiveawayParticipants(msg.id | 0) });
+        return;
+      }
+      if (msg.type === 'giveaway_draw') {
+        if (!entry.can.giveaway) return;
+        try {
+          const g = await drawGiveaway(msg.id | 0);
+          for (const c of clients) if (c.can?.giveaway) send(c, { type: 'giveaways', list: listGiveaways() });
+          send(entry, { type: 'giveaway_drawn', ok: true, id: g.id, winners: g.winners });
+          logAct(session, 'giveaway', null, `tirage « ${g.title} » — ${g.winners.length} gagnant(s)`);
+        } catch (e) {
+          send(entry, { type: 'giveaway_drawn', ok: false, error: String(e?.message || e) });
+        }
+        return;
+      }
+
       /* ---- boutique ---- */
       if (msg.type === 'shop_announce') {
         if (!entry.can.shop) {
@@ -1528,4 +1588,17 @@ export function registerGateway(app) {
       logActivity(null, 'Système', 'settings', null, null, 'stats compétitives réinitialisées (auto)');
     }
   }, 60 * 60000).unref?.();
+
+  // Tirage auto. des giveaways arrivés à leur date de fin programmée (vérifié toutes les 2 min).
+  setInterval(async () => {
+    for (const g of dueGiveaways()) {
+      try {
+        const drawn = await drawGiveaway(g.id);
+        for (const c of clients) if (c.can?.giveaway) send(c, { type: 'giveaways', list: listGiveaways() });
+        logActivity(null, 'Système', 'giveaway', null, null, `tirage auto « ${drawn.title} » — ${drawn.winners.length} gagnant(s)`);
+      } catch (e) {
+        console.error('[gateway] tirage auto giveaway échoué :', e?.message || e);
+      }
+    }
+  }, 2 * 60000).unref?.();
 }

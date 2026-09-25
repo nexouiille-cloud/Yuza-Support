@@ -363,6 +363,9 @@ function showView(name) {
   if (name === 'panels' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_panels' }));
   }
+  if (name === 'giveaway' && ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'get_giveaways' }));
+  }
   if (name === 'shop') {
     $('#shopStatus').textContent = '';
   }
@@ -391,7 +394,7 @@ function showView(name) {
 /* ---------------- badge "Nouveau" sur les onglets récemment ajoutés ---------------- */
 const NEW_BADGE_UNTIL = {
   rankup: '2026-09-26', announce: '2026-09-26', sanctions: '2026-09-26',
-  panels: '2026-09-26', shop: '2026-09-26',
+  panels: '2026-09-26', shop: '2026-09-26', giveaway: '2026-10-09',
 };
 function newBadgeSeen() {
   try { return JSON.parse(localStorage.getItem('volt_new_seen') || '[]'); } catch { return []; }
@@ -431,6 +434,7 @@ function applyPermsUI() {
   $('#sanctionsNav').classList.toggle('hidden', !perms.sanctions);
   $('#panelsNav').classList.toggle('hidden', !perms.panels);
   $('#shopNav').classList.toggle('hidden', !perms.shop);
+  $('#giveawayNav').classList.toggle('hidden', !perms.giveaway);
   const cm = $('#cMacros');
   if (cm) cm.classList.toggle('hidden', settingsScope !== 'owner');
   $('#macroBtn').classList.toggle('hidden', !(current && macros.length));
@@ -1465,6 +1469,34 @@ function handle(m) {
 
     case 'reprise_published':
       setStatus(m.ok ? (m.edited ? '✓ panneau mis à jour dans Discord' : '✓ panneau publié') : `échec panneau : ${m.error || '?'}`);
+      break;
+
+    case 'giveaways':
+      renderGiveawayList(m.list || []);
+      break;
+
+    case 'giveaway_saved':
+      setStatus('Giveaway enregistré.');
+      if (pendingGiveawayPublishId && m.id && ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'publish_giveaway', id: m.id }));
+      }
+      pendingGiveawayPublishId = null;
+      break;
+
+    case 'giveaway_published':
+      setStatus(m.ok ? '✓ giveaway publié dans Discord' : `échec publication : ${m.error || '?'}`);
+      break;
+
+    case 'giveaway_entries':
+      renderGiveawayEntries(m.id, m.list || []);
+      break;
+
+    case 'giveaway_drawn':
+      setStatus(
+        m.ok
+          ? `✓ tirage effectué — ${m.winners.length} gagnant${m.winners.length > 1 ? 's' : ''}`
+          : `échec tirage : ${m.error || '?'}`,
+      );
       break;
 
     case 'shop_result':
@@ -2674,7 +2706,7 @@ function fillSettings(s, scope) {
 const PERM_FIELDS = {
   permAnnounce: 'announce', permRecruit: 'recruit', permBanners: 'banners',
   permSanctions: 'sanctions', permShop: 'shop', permPanels: 'panels', permWebhooks: 'webhooks',
-  permOrgchart: 'orgchart', permRankup: 'rankup',
+  permOrgchart: 'orgchart', permRankup: 'rankup', permGiveaway: 'giveaway',
 };
 function permOptions(cur) {
   let html = '';
@@ -3138,6 +3170,149 @@ function savePanel(alsoPublish) {
   ws.send(JSON.stringify({ type: 'save_panel', panel }));
   setStatus('Enregistrement du panneau…');
 }
+/* ---------------- giveaways ---------------- */
+let giveawaysCache = [];
+let pendingGiveawayPublishId = null;
+const GA_STATUS_LABEL = { draft: 'brouillon', active: 'en cours', drawn: 'terminé' };
+function renderGiveawayList(list) {
+  giveawaysCache = list;
+  const box = $('#gaList');
+  if (!box) return;
+  box.innerHTML = list.length
+    ? list
+        .map((g) => {
+          const winners = g.winners && g.winners.length
+            ? `<div class="ga-winners">🏆 ${g.winners.map((w) => esc(w.name)).join(', ')}</div>`
+            : '';
+          const end = g.endsAt ? `· tirage prévu ${new Date(g.endsAt).toLocaleString('fr-FR')}` : '';
+          return (
+            `<div class="ga-row">` +
+            `<div class="ga-row-top"><span class="ga-title">${esc(g.title)}</span>` +
+            `<span class="ga-badge ${g.status}">${GA_STATUS_LABEL[g.status] || g.status}</span></div>` +
+            `<div class="ga-meta">${g.prize ? esc(g.prize) + ' · ' : ''}${g.participantCount} participant${g.participantCount > 1 ? 's' : ''} · ${g.winnersCount} gagnant${g.winnersCount > 1 ? 's' : ''} ${end}</div>` +
+            winners +
+            `<div class="ga-btns" style="margin-top:8px">` +
+            (g.status === 'draft' ? `<button class="linkbtn ga-edit" data-id="${g.id}" type="button">éditer</button><button class="linkbtn ga-pub" data-id="${g.id}" type="button">publier</button>` : '') +
+            (g.status !== 'draft' ? `<button class="linkbtn ga-entries" data-id="${g.id}" type="button">voir les participants</button>` : '') +
+            (g.status === 'active' ? `<button class="linkbtn ga-draw" data-id="${g.id}" type="button">🎲 tirer au sort</button>` : '') +
+            `<button class="linkbtn ga-del" data-id="${g.id}" type="button">🗑</button>` +
+            `</div></div>`
+          );
+        })
+        .join('')
+    : '<div class="muted">Aucun giveaway pour l\'instant.</div>';
+  box.querySelectorAll('.ga-edit').forEach((b) =>
+    b.addEventListener('click', () => openGiveawayEditor(giveawaysCache.find((x) => x.id == b.dataset.id))),
+  );
+  box.querySelectorAll('.ga-pub').forEach((b) =>
+    b.addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'publish_giveaway', id: Number(b.dataset.id) }));
+      setStatus('Publication du giveaway…');
+    }),
+  );
+  box.querySelectorAll('.ga-entries').forEach((b) =>
+    b.addEventListener('click', () => {
+      ws.send(JSON.stringify({ type: 'get_giveaway_entries', id: Number(b.dataset.id) }));
+    }),
+  );
+  box.querySelectorAll('.ga-draw').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Tirer les gagnants maintenant ? (irréversible)')) {
+        ws.send(JSON.stringify({ type: 'giveaway_draw', id: Number(b.dataset.id) }));
+        setStatus('Tirage en cours…');
+      }
+    }),
+  );
+  box.querySelectorAll('.ga-del').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (window.confirm('Supprimer ce giveaway ? (le message Discord reste)'))
+        ws.send(JSON.stringify({ type: 'delete_giveaway', id: Number(b.dataset.id) }));
+    }),
+  );
+}
+$('#gaNew').addEventListener('click', () => openGiveawayEditor(null));
+function toLocalDatetimeInput(ts) {
+  if (!ts) return '';
+  const d = new Date(ts - new Date().getTimezoneOffset() * 60000);
+  return d.toISOString().slice(0, 16);
+}
+function openGiveawayEditor(g) {
+  $('#gaEntries').classList.add('hidden');
+  const box = $('#gaEditor');
+  box.classList.remove('hidden');
+  box.innerHTML =
+    `<input type="hidden" id="geId" value="${g?.id || ''}" />` +
+    `<label class="setline">Titre <input type="text" id="geTitle" value="${esc(g?.title || '')}" placeholder="Giveaway de la semaine" /></label>` +
+    `<textarea id="geDesc" rows="2" placeholder="Petite intro (optionnel)">${esc(g?.description || '')}</textarea>` +
+    `<label class="setline">Lot <input type="text" id="gePrize" value="${esc(g?.prize || '')}" placeholder="Nitro 1 mois" /></label>` +
+    `<label class="setline">Salon <input type="text" id="geChan" value="${esc(g?.channelId || '')}" placeholder="ID du salon" /></label>` +
+    `<label class="setline">Emoji de participation <input type="text" id="geEmoji" value="${esc(g?.emoji || '🎉')}" style="max-width:80px" /></label>` +
+    `<label class="setline">Nombre de gagnants <input type="number" id="geWinners" min="1" max="20" value="${g?.winnersCount || 1}" style="max-width:80px" /></label>` +
+    `<div class="ga-req"><input type="checkbox" id="geReqMsgOn" ${g?.reqMessages ? 'checked' : ''} />` +
+    `<label>Exiger un nombre de messages depuis la participation :</label>` +
+    `<input type="number" id="geReqMsg" min="1" value="${g?.reqMessages || 20}" /></div>` +
+    `<div class="ga-req"><input type="checkbox" id="geReqInvOn" ${g?.reqInvites ? 'checked' : ''} />` +
+    `<label>Exiger un nombre d'invitations depuis la participation :</label>` +
+    `<input type="number" id="geReqInv" min="1" value="${g?.reqInvites || 3}" /></div>` +
+    `<label class="setline">Tirage automatique à (optionnel, laisse vide pour manuel uniquement) <input type="datetime-local" id="geEndsAt" value="${toLocalDatetimeInput(g?.endsAt)}" /></label>` +
+    `<p class="muted" style="margin:2px 0 8px">Le bot ajoute lui-même la réaction sur le message. Republier un giveaway déjà publié met juste à jour le texte (pas les participants).</p>` +
+    `<div class="mm-actions">` +
+    `<button id="geSave" class="btn-accent" type="button">Enregistrer</button>` +
+    `<button id="gePublish" class="btn-accent" type="button">Enregistrer + Publier</button>` +
+    `<button id="geClose" class="linkbtn" type="button">Fermer</button></div>`;
+  $('#geClose').addEventListener('click', () => box.classList.add('hidden'));
+  $('#geSave').addEventListener('click', () => saveGiveaway(false));
+  $('#gePublish').addEventListener('click', () => saveGiveaway(true));
+}
+function gatherGiveaway() {
+  const endsAtVal = $('#geEndsAt').value;
+  return {
+    id: Number($('#geId').value) || undefined,
+    title: $('#geTitle').value.trim(),
+    description: $('#geDesc').value.trim(),
+    prize: $('#gePrize').value.trim(),
+    channelId: $('#geChan').value.trim(),
+    emoji: $('#geEmoji').value.trim() || '🎉',
+    winnersCount: Number($('#geWinners').value) || 1,
+    reqMessages: $('#geReqMsgOn').checked ? Number($('#geReqMsg').value) || 0 : 0,
+    reqInvites: $('#geReqInvOn').checked ? Number($('#geReqInv').value) || 0 : 0,
+    endsAt: endsAtVal ? new Date(endsAtVal).getTime() : null,
+  };
+}
+function saveGiveaway(alsoPublish) {
+  if (!ws || ws.readyState !== 1) return;
+  const giveaway = gatherGiveaway();
+  pendingGiveawayPublishId = alsoPublish ? true : null;
+  ws.send(JSON.stringify({ type: 'save_giveaway', giveaway }));
+  setStatus('Enregistrement du giveaway…');
+}
+function renderGiveawayEntries(id, list) {
+  const g = giveawaysCache.find((x) => x.id === id);
+  const box = $('#gaEntries');
+  box.classList.remove('hidden');
+  $('#gaEditor').classList.add('hidden');
+  const rows = list
+    .slice()
+    .sort((a, b) => (b.eligible - a.eligible) || a.enteredAt - b.enteredAt)
+    .map(
+      (p) =>
+        `<tr class="${p.eligible ? 'eligible' : ''}"><td>${esc(p.name)}</td>` +
+        `<td>${g?.reqMessages ? `<span class="${p.msgsSince >= g.reqMessages ? 'ga-ok' : 'ga-no'}">${p.msgsSince}/${g.reqMessages}</span>` : '—'}</td>` +
+        `<td>${g?.reqInvites ? `<span class="${p.invitesSince >= g.reqInvites ? 'ga-ok' : 'ga-no'}">${p.invitesSince}/${g.reqInvites}</span>` : '—'}</td>` +
+        `<td>${p.eligible ? '<span class="ga-ok">✓ éligible</span>' : '<span class="ga-no">✗ non éligible</span>'}</td></tr>`,
+    )
+    .join('');
+  box.innerHTML =
+    `<div class="stats-head" style="margin-bottom:10px"><h3 style="margin:0">Participants — ${esc(g?.title || '')}</h3>` +
+    `<button id="geEntriesClose" class="linkbtn" type="button">Fermer</button></div>` +
+    (list.length
+      ? `<div style="overflow-x:auto"><table class="ga-entry-table"><thead><tr>` +
+        `<th>Pseudo</th><th>Messages</th><th>Invitations</th><th>Statut</th>` +
+        `</tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<div class="muted">Personne n\'a encore réagi.</div>');
+  $('#geEntriesClose').addEventListener('click', () => box.classList.add('hidden'));
+}
+
 /* ---------------- boutique ---------------- */
 $('#shopSend').addEventListener('click', () => {
   if (!ws || ws.readyState !== 1) return;

@@ -86,7 +86,7 @@ export async function completeLogin(code) {
     uid: user.id,
     name: displayName,
     level,
-    exp: Date.now() + 1000 * 60 * 60 * 12, // 12 h
+    exp: Date.now() + config.sessionMaxAgeMs,
   });
   return { ok: true, session, user, displayName };
 }

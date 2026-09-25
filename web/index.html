@@ -162,6 +162,7 @@
       <button class="navbtn hidden" id="sanctionsNav" data-view="sanctions"><span>⚠</span><span class="tip">Sanctions du staff</span></button>
       <button class="navbtn hidden" id="panelsNav" data-view="panels"><span>📋</span><span class="tip">Panneaux « Reprise »</span></button>
       <button class="navbtn hidden" id="shopNav" data-view="shop"><span>🛒</span><span class="tip">Boutique</span></button>
+      <button class="navbtn hidden" id="giveawayNav" data-view="giveaway"><span>🎉</span><span class="tip">Giveaways</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Statistiques</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Notes de version</span></button>
       <button class="navbtn hidden" id="bannersNav" data-view="banners"><span>🎨</span><span class="tip">Bannières</span></button>
@@ -597,6 +598,7 @@
               <label class="setline">🔗 Webhooks entrants <select id="permWebhooks"></select></label>
               <label class="setline">🗂️ Organigramme (modifier) <select id="permOrgchart"></select></label>
               <label class="setline">🎖️ Changements de grades <select id="permRankup"></select></label>
+              <label class="setline">🎉 Giveaways <select id="permGiveaway"></select></label>
             </div>
             <div class="setgrp">
               <h4>⚡ Macros (réponses pré-écrites)</h4>
@@ -707,6 +709,18 @@
           <label class="setline">Lien <input type="text" id="shopLink" placeholder="https://ta-boutique.tebex.io/" /></label>
           <label class="setline">Texte du bouton <input type="text" id="shopLinkLabel" maxlength="60" placeholder="Ouvrir la boutique" /></label>
           <div class="mm-actions"><button id="shopSend" class="btn-accent" type="button">Publier l'annonce boutique</button><span id="shopStatus" class="who"></span></div>
+        </div>
+      </section>
+
+      <!-- ---- Giveaways ---- -->
+      <section id="viewGiveaway" class="view">
+        <div class="stats-head"><h2>🎉 Giveaways</h2></div>
+        <div class="setgrp">
+          <p class="muted">Poste un giveaway dans un salon : les membres réagissent pour participer. Tu peux exiger un nombre de messages et/ou d'invitations depuis leur participation — le bot vérifie ça tout seul. Tirage manuel à tout moment, ou automatique à la date choisie.</p>
+          <div id="gaList"></div>
+          <button id="gaNew" class="linkbtn" type="button">+ Nouveau giveaway</button>
+          <div id="gaEditor" class="hidden"></div>
+          <div id="gaEntries" class="hidden"></div>
         </div>
       </section>
 

@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..');
 const FILE = join(DATA_DIR, 'data.json');
 
-let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [], convocations: [], panels: [], hooks: [], activity: [], orgChart: [] };
+let data = { tickets: {}, messages: {}, seq: 0, blacklist: [], pushSubs: [], settings: {}, suggestions: [], userThemes: {}, sanctions: [], firstSeen: {}, reports: [], onboarded: {}, archive: [], convocations: [], panels: [], hooks: [], activity: [], orgChart: [], giveaways: [], messageCounts: {}, inviteCounts: {} };
 if (existsSync(FILE)) {
   try {
     data = JSON.parse(readFileSync(FILE, 'utf8'));
@@ -33,6 +33,9 @@ if (existsSync(FILE)) {
     data.hooks ||= [];
     data.activity ||= [];
     data.orgChart ||= [];
+    data.giveaways ||= [];
+    data.messageCounts ||= {};
+    data.inviteCounts ||= {};
   } catch (e) {
     console.error('[db] data.json illisible, on repart de zéro:', e.message);
   }
@@ -413,12 +416,12 @@ export function maybeAutoResetStats() {
 }
 
 /* ---------------- permissions par grade + macros ---------------- */
-export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart', 'rankup'];
+export const PERM_KEYS = ['announce', 'recruit', 'banners', 'sanctions', 'shop', 'webhooks', 'panels', 'orgchart', 'rankup', 'giveaway'];
 export function effectivePerms() {
   const hi = Math.max(2, maxLevel - 2); // "directeur staff" par défaut
   const mid = Math.max(2, maxLevel - 1); // "resp.g" par défaut (un cran sous le tout-haut)
   const top = Math.max(2, maxLevel); // "voltgroup" par défaut
-  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: mid, webhooks: top, panels: mid, orgchart: hi, rankup: hi };
+  const d = { announce: hi, recruit: hi, banners: hi, sanctions: hi, shop: mid, webhooks: top, panels: mid, orgchart: hi, rankup: hi, giveaway: hi };
   const s = data.settings.perms || {};
   const out = {};
   for (const k of PERM_KEYS) {
@@ -1155,4 +1158,137 @@ export function searchTicketIds(query) {
     if (inMessages) ids.push(t.user_id);
   }
   return ids;
+}
+
+/* ---------------- giveaways ---------------- */
+// Un giveaway = un message Discord avec une réaction pour participer, + des conditions
+// optionnelles (nb de messages / nb d'invitations "gagnées" DEPUIS l'entrée dans le giveaway,
+// via un instantané pris au moment où la personne réagit). Le compteur de messages/invites
+// est global par utilisateur (data.messageCounts / data.inviteCounts, alimenté par bot.js) ;
+// seule la DIFFÉRENCE depuis l'entrée compte pour l'éligibilité de ce giveaway précis.
+export function incrementMessageCount(uid) {
+  if (!uid) return;
+  data.messageCounts[uid] = (data.messageCounts[uid] || 0) + 1;
+  save();
+}
+export function incrementInviteCount(uid, by = 1) {
+  if (!uid) return;
+  data.inviteCounts[uid] = (data.inviteCounts[uid] || 0) + by;
+  save();
+}
+
+function cleanGiveawayInput(g) {
+  return {
+    title: String(g.title || 'Giveaway').slice(0, 120),
+    description: String(g.description || '').slice(0, 1500),
+    prize: String(g.prize || '').slice(0, 200),
+    channelId: String(g.channelId || '').trim(),
+    emoji: String(g.emoji || '🎉').trim().replace(/\s+/g, '').slice(0, 60) || '🎉',
+    winnersCount: Math.min(20, Math.max(1, Number(g.winnersCount) || 1)),
+    reqMessages: Math.max(0, Number(g.reqMessages) || 0),
+    reqInvites: Math.max(0, Number(g.reqInvites) || 0),
+    endsAt: g.endsAt ? Number(g.endsAt) || null : null,
+  };
+}
+export function listGiveaways() {
+  return data.giveaways
+    .slice()
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((g) => ({ ...g, participantCount: Object.keys(g.participants || {}).length }));
+}
+export function getGiveaway(id) {
+  return data.giveaways.find((g) => g.id === (id | 0)) || null;
+}
+export function upsertGiveaway(g, byId, byName) {
+  if (g && g.id) {
+    const i = data.giveaways.findIndex((x) => x.id === (g.id | 0));
+    if (i !== -1) {
+      data.giveaways[i] = { ...data.giveaways[i], ...cleanGiveawayInput(g) };
+      save();
+      return data.giveaways[i];
+    }
+  }
+  const created = {
+    ...cleanGiveawayInput(g),
+    id: ++data.seq,
+    messageId: '',
+    status: 'draft',
+    createdBy: byId || null,
+    createdByName: byName || 'Système',
+    createdAt: Date.now(),
+    participants: {},
+    winners: null,
+    drawnAt: null,
+  };
+  data.giveaways.push(created);
+  save();
+  return created;
+}
+export function deleteGiveaway(id) {
+  const i = data.giveaways.findIndex((g) => g.id === (id | 0));
+  if (i !== -1) { data.giveaways.splice(i, 1); save(); }
+}
+export function setGiveawayMessage(id, channelId, messageId) {
+  const g = getGiveaway(id);
+  if (!g) return null;
+  g.channelId = channelId;
+  g.messageId = messageId;
+  g.status = 'active';
+  save();
+  return g;
+}
+export function addGiveawayParticipant(id, uid, name, avatarUrl) {
+  const g = getGiveaway(id);
+  if (!g || g.status !== 'active') return null;
+  if (!g.participants[uid]) {
+    g.participants[uid] = {
+      name: name || uid,
+      avatarUrl: avatarUrl || '',
+      enteredAt: Date.now(),
+      msgBaseline: data.messageCounts[uid] || 0,
+      inviteBaseline: data.inviteCounts[uid] || 0,
+    };
+    save();
+  }
+  return g.participants[uid];
+}
+export function removeGiveawayParticipant(id, uid) {
+  const g = getGiveaway(id);
+  if (!g || !g.participants[uid]) return;
+  delete g.participants[uid];
+  save();
+}
+export function listGiveawayParticipants(id) {
+  const g = getGiveaway(id);
+  if (!g) return [];
+  return Object.entries(g.participants).map(([uid, p]) => {
+    const msgsSince = Math.max(0, (data.messageCounts[uid] || 0) - p.msgBaseline);
+    const invitesSince = Math.max(0, (data.inviteCounts[uid] || 0) - p.inviteBaseline);
+    const okMsgs = g.reqMessages <= 0 || msgsSince >= g.reqMessages;
+    const okInvites = g.reqInvites <= 0 || invitesSince >= g.reqInvites;
+    return {
+      uid, name: p.name, avatarUrl: p.avatarUrl, enteredAt: p.enteredAt,
+      msgsSince, invitesSince, eligible: okMsgs && okInvites,
+    };
+  });
+}
+export function drawGiveawayWinners(id) {
+  const g = getGiveaway(id);
+  if (!g) return null;
+  const eligible = listGiveawayParticipants(id).filter((p) => p.eligible);
+  const pool = [...eligible];
+  const winners = [];
+  while (winners.length < g.winnersCount && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    winners.push(pool.splice(i, 1)[0]);
+  }
+  g.winners = winners.map((w) => ({ uid: w.uid, name: w.name }));
+  g.status = 'drawn';
+  g.drawnAt = Date.now();
+  save();
+  return g;
+}
+export function dueGiveaways() {
+  const now = Date.now();
+  return data.giveaways.filter((g) => g.status === 'active' && g.endsAt && g.endsAt <= now);
 }

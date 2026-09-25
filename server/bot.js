@@ -38,6 +38,14 @@ import {
   setPanelMsg,
   setTicketCategory,
   getTicket,
+  incrementMessageCount,
+  incrementInviteCount,
+  listGiveaways,
+  getGiveaway,
+  addGiveawayParticipant,
+  removeGiveawayParticipant,
+  setGiveawayMessage,
+  drawGiveawayWinners,
 } from './db.js';
 import { saveFromUrl } from './uploads.js';
 
@@ -46,6 +54,8 @@ export const bot = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildInvites,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ],
@@ -101,6 +111,7 @@ bot.once(Events.ClientReady, async (c) => {
   refreshMembers();
   setInterval(refreshMembers, 10 * 60000).unref?.();
   applyBotStatus();
+  refreshInviteCache();
 });
 
 // Statut affiché sous le nom du bot. Plusieurs lignes = ça défile (~7 s).
@@ -185,6 +196,40 @@ export function getMemberAvatar(uid) {
   return membersCache.find((m) => m.id === String(uid))?.avatar || null;
 }
 
+/* ---------------- suivi des invitations (pour les giveaways "X invites") ---------------- */
+// Approche standard : on garde en mémoire le nb d'utilisations de chaque invite, et à
+// chaque arrivée de membre on recompare pour trouver laquelle a bougé -> son créateur
+// vient de "gagner" une invitation. Nécessite la permission bot "Gérer le serveur".
+// Limite connue (assumée, pas bloquante) : ne redescend pas si l'invité quitte ensuite.
+let inviteUses = new Map(); // code -> { uses, inviterId }
+async function refreshInviteCache() {
+  try {
+    const guild = await bot.guilds.fetch(config.guildId);
+    const invites = await guild.invites.fetch();
+    inviteUses = new Map(invites.map((inv) => [inv.code, { uses: inv.uses || 0, inviterId: inv.inviterId }]));
+  } catch (err) {
+    console.error('[bot] suivi des invitations indisponible (permission "Gérer le serveur" manquante ?) :', err?.message || err);
+  }
+}
+bot.on(Events.GuildMemberAdd, async (member) => {
+  try {
+    if (member.guild.id !== config.guildId) return;
+    const before = inviteUses;
+    const guild = await bot.guilds.fetch(config.guildId);
+    const after = await guild.invites.fetch();
+    for (const inv of after.values()) {
+      const prev = before.get(inv.code);
+      if (inv.inviterId && (inv.uses || 0) > (prev?.uses || 0)) {
+        incrementInviteCount(inv.inviterId);
+        break;
+      }
+    }
+    inviteUses = new Map(after.map((inv) => [inv.code, { uses: inv.uses || 0, inviterId: inv.inviterId }]));
+  } catch (err) {
+    console.error('[bot] maj du suivi des invitations échouée :', err?.message || err);
+  }
+});
+
 // Envoi d'un MP à un membre (convocation) + trace dans le salon d'annonce.
 export async function sendConvocation(userId, text, byName) {
   const user = await bot.users.fetch(userId);
@@ -207,7 +252,11 @@ export async function sendConvocation(userId, text, byName) {
 bot.on(Events.MessageCreate, async (msg) => {
   try {
     if (msg.author.bot) return;
-    if (msg.guild) return; // on ne traite que les MP
+    if (msg.guild) {
+      // message sur le serveur (pas un MP) : compté pour l'éligibilité "X messages" des giveaways
+      incrementMessageCount(msg.author.id);
+      return;
+    }
 
     const userId = msg.author.id;
     const username = msg.author.globalName || msg.author.username;
@@ -268,6 +317,101 @@ bot.on(Events.MessageCreate, async (msg) => {
     console.error('[bot] erreur MessageCreate:', err);
   }
 });
+
+/* ---------------- giveaways : entrée / sortie par réaction ---------------- */
+async function matchingActiveGiveaway(reaction) {
+  const giveaways = listGiveaways().filter((g) => g.status === 'active' && g.messageId === reaction.message.id);
+  if (!giveaways.length) return null;
+  const g = giveaways[0];
+  const emoji = reaction.emoji.id ? `<:${reaction.emoji.name}:${reaction.emoji.id}>` : reaction.emoji.name;
+  return emoji === g.emoji || reaction.emoji.name === g.emoji ? g : null;
+}
+bot.on(Events.MessageReactionAdd, async (reaction, user) => {
+  try {
+    if (user.bot) return;
+    if (reaction.partial) await reaction.fetch();
+    const g = await matchingActiveGiveaway(reaction);
+    if (!g) return;
+    const member = await bot.guilds.fetch(config.guildId).then((gd) => gd.members.fetch(user.id)).catch(() => null);
+    const name = member?.nickname || user.globalName || user.username;
+    const avatarUrl = user.displayAvatarURL({ extension: 'png', size: 64 });
+    addGiveawayParticipant(g.id, user.id, name, avatarUrl);
+  } catch (err) {
+    console.error('[bot] erreur MessageReactionAdd (giveaway) :', err?.message || err);
+  }
+});
+bot.on(Events.MessageReactionRemove, async (reaction, user) => {
+  try {
+    if (user.bot) return;
+    if (reaction.partial) await reaction.fetch();
+    const g = await matchingActiveGiveaway(reaction);
+    if (!g) return;
+    removeGiveawayParticipant(g.id, user.id);
+  } catch (err) {
+    console.error('[bot] erreur MessageReactionRemove (giveaway) :', err?.message || err);
+  }
+});
+
+// Publie (ou édite) l'embed d'un giveaway dans son salon, avec la réaction posée par le bot.
+export async function publishGiveaway(g) {
+  if (!g.channelId) throw new Error('salon non configuré');
+  const ch = await bot.channels.fetch(g.channelId);
+  if (!ch || !ch.isTextBased()) throw new Error('salon introuvable');
+
+  const rules = [];
+  if (g.reqMessages > 0) rules.push(`💬 Avoir envoyé **${g.reqMessages}** messages sur le serveur depuis ta participation`);
+  if (g.reqInvites > 0) rules.push(`🔗 Avoir amené **${g.reqInvites}** invitations depuis ta participation`);
+  const desc =
+    (g.description ? g.description.trim() + '\n\n' : '') +
+    `Réagis avec ${g.emoji} pour participer !` +
+    (rules.length ? `\n\n**Conditions à remplir :**\n${rules.join('\n')}` : '') +
+    `\n\n🏆 **${g.winnersCount}** gagnant${g.winnersCount > 1 ? 's' : ''}` +
+    (g.endsAt ? `\n⏰ Tirage <t:${Math.floor(g.endsAt / 1000)}:R>` : '');
+
+  const embed = new EmbedBuilder()
+    .setColor(0xff9d00)
+    .setTitle(`🎉 ${g.title}`)
+    .setDescription(desc.slice(0, 4096));
+  if (g.prize) embed.addFields({ name: 'Lot', value: g.prize });
+
+  let m;
+  if (g.messageId) {
+    try { m = await ch.messages.fetch(g.messageId); await m.edit({ embeds: [embed] }); }
+    catch { m = null; }
+  }
+  if (!m) {
+    m = await ch.send({ embeds: [embed] });
+    try { await m.react(g.emoji); } catch (e) { console.error('[bot] réaction giveaway impossible (emoji invalide ?) :', e?.message || e); }
+  }
+  setGiveawayMessage(g.id, g.channelId, m.id);
+  return m.id;
+}
+
+// Tire les gagnants, poste le résultat, édite l'embed d'origine.
+export async function drawGiveaway(id) {
+  const g = drawGiveawayWinners(id);
+  if (!g) throw new Error('giveaway introuvable');
+  const ch = await bot.channels.fetch(g.channelId).catch(() => null);
+  if (ch?.isTextBased()) {
+    const mentions = g.winners.map((w) => `<@${w.uid}>`).join(', ');
+    const embed = new EmbedBuilder()
+      .setColor(0x43d162)
+      .setTitle(`🎉 Giveaway terminé — ${g.title}`)
+      .setDescription(
+        g.winners.length
+          ? `Félicitations ${mentions} !${g.prize ? `\n🏆 ${g.prize}` : ''}`
+          : "Aucun participant éligible — pas de gagnant cette fois.",
+      );
+    await ch.send({ embeds: [embed], allowedMentions: { users: g.winners.map((w) => w.uid) } });
+    if (g.messageId) {
+      try {
+        const m = await ch.messages.fetch(g.messageId);
+        await m.edit({ embeds: [EmbedBuilder.from(m.embeds[0]).setTitle(`🔒 [Terminé] ${g.title}`)] });
+      } catch {}
+    }
+  }
+  return g;
+}
 
 // Boutons de catégorie envoyés au client au 1er MP.
 async function askCategory(userId) {
