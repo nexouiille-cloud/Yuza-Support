@@ -160,25 +160,25 @@
   <div id="app">
     <nav id="rail">
       <img class="brand logo" src="/logo.png" alt="" />
-      <button class="navbtn active" data-view="home"><span>🏠</span><span class="tip">Accueil</span></button>
-      <button class="navbtn" data-view="tickets"><span>🎫</span><span class="tip">Ticket</span></button>
-      <button class="navbtn" data-view="staff"><span>👥</span><span class="tip">Staff en ligne</span></button>
-      <button class="navbtn" data-view="members"><span>📇</span><span class="tip">Membre</span></button>
-      <button class="navbtn" data-view="convoke"><span>📌</span><span class="tip">Convocations</span></button>
-      <button class="navbtn" data-view="suggest"><span>💡</span><span class="tip">Suggestion web</span></button>
-      <button class="navbtn" data-view="report"><span>🐞</span><span class="tip">Report bug web</span></button>
-      <button class="navbtn" data-view="activity"><span>📋</span><span class="tip">Journal d'activité</span></button>
-      <button class="navbtn" data-view="orgchart"><span>🗂️</span><span class="tip">Organigramme</span></button>
+      <button class="navbtn active" data-view="accueil"><span>🏠</span><span class="tip">Accueil</span></button>
+      <button class="navbtn" data-view="ticket"><span>🎫</span><span class="tip">Ticket</span></button>
+      <button class="navbtn" data-view="staff-en-ligne"><span>👥</span><span class="tip">Staff en ligne</span></button>
+      <button class="navbtn" data-view="membre"><span>📇</span><span class="tip">Membre</span></button>
+      <button class="navbtn" data-view="convocations"><span>📌</span><span class="tip">Convocations</span></button>
+      <button class="navbtn" data-view="suggestion-web"><span>💡</span><span class="tip">Suggestion web</span></button>
+      <button class="navbtn" data-view="report-bug-web"><span>🐞</span><span class="tip">Report bug web</span></button>
+      <button class="navbtn" data-view="journal-activite"><span>📋</span><span class="tip">Journal d'activité</span></button>
+      <button class="navbtn" data-view="organigramme"><span>🗂️</span><span class="tip">Organigramme</span></button>
       <button class="navbtn hidden" id="rankupNav" data-view="rankup"><span>🎖️</span><span class="tip">Rankup</span></button>
-      <button class="navbtn hidden" id="announceNav" data-view="announce"><span>📢</span><span class="tip">Annonces</span></button>
-      <button class="navbtn hidden" id="sanctionsNav" data-view="sanctions"><span>⚠</span><span class="tip">Sanctions staff</span></button>
-      <button class="navbtn hidden" id="panelsNav" data-view="panels"><span>📋</span><span class="tip">Panneaux</span></button>
-      <button class="navbtn hidden" id="shopNav" data-view="shop"><span>🛒</span><span class="tip">Annonce boutique</span></button>
-      <button class="navbtn hidden" id="giveawayNav" data-view="giveaway"><span>🎉</span><span class="tip">Giveaways</span></button>
+      <button class="navbtn hidden" id="announceNav" data-view="annonces"><span>📢</span><span class="tip">Annonces</span></button>
+      <button class="navbtn hidden" id="sanctionsNav" data-view="sanctions-staff"><span>⚠</span><span class="tip">Sanctions staff</span></button>
+      <button class="navbtn hidden" id="panelsNav" data-view="panneaux"><span>📋</span><span class="tip">Panneaux</span></button>
+      <button class="navbtn hidden" id="shopNav" data-view="annonce-boutique"><span>🛒</span><span class="tip">Annonce boutique</span></button>
+      <button class="navbtn hidden" id="giveawayNav" data-view="giveaways"><span>🎉</span><span class="tip">Giveaways</span></button>
       <button class="navbtn" id="statsBtn" data-view="stats"><span>📊</span><span class="tip">Stats</span></button>
       <button class="navbtn" id="patchNav" data-view="patch"><span>📃</span><span class="tip">Patch</span></button>
-      <button class="navbtn hidden" id="bannersNav" data-view="banners"><span>🎨</span><span class="tip">Bannieres</span></button>
-      <button class="navbtn hidden" id="modNav" data-view="mod"><span>🛡️</span><span class="tip">Moderation</span></button>
+      <button class="navbtn hidden" id="bannersNav" data-view="bannieres"><span>🎨</span><span class="tip">Bannieres</span></button>
+      <button class="navbtn hidden" id="modNav" data-view="moderation"><span>🛡️</span><span class="tip">Moderation</span></button>
       <button class="navbtn hidden" id="settingsNav" data-view="settings"><span>⚙️</span><span class="tip">Settings</span></button>
       <span class="spacer"></span>
       <button class="navbtn" id="railEditBtn" type="button" title="Réorganiser les onglets"><span>↕️</span><span class="tip">Réorganiser les onglets</span></button>
@@ -189,7 +189,7 @@
     <div id="stage">
 
       <!-- ---- Accueil ---- -->
-      <section id="viewHome" class="view active">
+      <section id="viewAccueil" class="view active">
         <div class="home-hi">Salut <span class="accent" id="hiName">—</span> 👋</div>
         <div class="home-sub">Bienvenue sur le panel support.<span class="lvl" id="hiLevel">—</span></div>
         <div id="homeReq" class="hidden"></div>
@@ -253,7 +253,7 @@
       </section>
 
       <!-- ---- Tickets ---- -->
-      <section id="viewTickets" class="view">
+      <section id="viewTicket" class="view">
         <div id="sidebar">
           <div id="sbHead">
             <div class="search-wrap">
@@ -330,7 +330,7 @@
       </section>
 
       <!-- ---- Équipe en ligne ---- -->
-      <section id="viewStaff" class="view">
+      <section id="viewStaff-en-ligne" class="view">
         <div class="stats-head">
           <h2>👥 Staff en ligne</h2>
           <span id="staffCount" class="who"></span>
@@ -340,7 +340,7 @@
       </section>
 
       <!-- ---- Suggestions ---- -->
-      <section id="viewSuggest" class="view">
+      <section id="viewSuggestion-web" class="view">
         <div class="stats-head"><h2>💡 Suggestion web</h2></div>
         <p class="muted">Une idée pour améliorer le panel ? Écris-la, l'équipe la verra.</p>
         <textarea id="sugText" rows="3" placeholder="Ta suggestion…"></textarea>
@@ -349,7 +349,7 @@
       </section>
 
       <!-- ---- Journal d'activité ---- -->
-      <section id="viewActivity" class="view">
+      <section id="viewJournal-activite" class="view">
         <div class="stats-head"><h2>📋 Journal d'activité</h2><span id="actCount" class="who"></span></div>
         <p class="muted" style="margin:-8px 0 14px">Qui a fait quoi, en direct. Visible par toute l'équipe.</p>
         <div id="actFilters"></div>
@@ -357,7 +357,7 @@
       </section>
 
       <!-- ---- Organigramme ---- -->
-      <section id="viewOrgchart" class="view">
+      <section id="viewOrganigramme" class="view">
         <div class="stats-head"><h2>🗂️ Organigramme</h2></div>
         <p class="muted">
           Glisse les boîtes où tu veux, relie-les avec « Sous les ordres de » pour tracer une flèche.
@@ -418,14 +418,14 @@
       </section>
 
       <!-- ---- Éditeur de bannières (owner) ---- -->
-      <section id="viewBanners" class="view">
+      <section id="viewBannieres" class="view">
         <div class="stats-head"><h2>🎨 Bannieres</h2></div>
         <p class="muted">Réservé à toi. Crée / modifie une bannière → <b>Télécharger PNG</b> → upload sur Discord → colle l'URL dans le champ « Bannière » d'un panneau. Tout est sauvegardé dans ton navigateur.</p>
         <div id="beRoot"></div>
       </section>
 
       <!-- ---- Convocation ---- -->
-      <section id="viewConvoke" class="view">
+      <section id="viewConvocations" class="view">
         <div class="stats-head"><h2>📌 Convocations</h2></div>
         <p class="muted">Convoque un membre : il reçoit un MP du bot, et une trace est postée dans le salon convocations (⚙️).</p>
         <div class="setgrp">
@@ -448,7 +448,7 @@
       </section>
 
       <!-- ---- Signaler un bug / problème ---- -->
-      <section id="viewReport" class="view">
+      <section id="viewReport-bug-web" class="view">
         <div class="stats-head"><h2>🐞 Report bug web</h2></div>
         <p class="muted">Un truc cassé, un affichage bizarre, une erreur ? Décris-le, l'équipe le verra.</p>
         <label class="setline" style="max-width:620px">Type
@@ -463,7 +463,7 @@
       </section>
 
       <!-- ---- Membres du serveur ---- -->
-      <section id="viewMembers" class="view">
+      <section id="viewMembre" class="view">
         <div class="stats-head"><h2>📇 Membre</h2><span id="memCount" class="who"></span></div>
         <input id="memSearch" type="search" placeholder="Chercher un membre ou un rôle…" autocomplete="off" />
         <div id="memberList"></div>
@@ -670,7 +670,7 @@
       </section>
 
       <!-- ---- Annonces ---- -->
-      <section id="viewAnnounce" class="view">
+      <section id="viewAnnonces" class="view">
         <div class="stats-head"><h2>📢 Annonces</h2></div>
         <div class="setgrp">
           <p class="muted">Envoyée dans le salon annonces par défaut (⚙️), ou dans le salon ci-dessous si rempli.</p>
@@ -684,7 +684,7 @@
       </section>
 
       <!-- ---- Sanctions du staff ---- -->
-      <section id="viewSanctions" class="view">
+      <section id="viewSanctions-staff" class="view">
         <div class="stats-head"><h2>⚠ Sanctions staff</h2></div>
         <div class="setgrp">
           <p class="muted">3 sanctions actives = accès au site retiré pour la personne.</p>
@@ -700,7 +700,7 @@
       </section>
 
       <!-- ---- Panneaux « Reprise » ---- -->
-      <section id="viewPanels" class="view">
+      <section id="viewPanneaux" class="view">
         <div class="stats-head"><h2>📋 Panneaux</h2></div>
         <div class="setgrp">
           <p class="muted">Crée un embed Discord avec des sections et des lignes 🟩 dispo / 🟥 indispo, puis publie-le dans un salon. Re-publier met à jour le même message.</p>
@@ -711,7 +711,7 @@
       </section>
 
       <!-- ---- Boutique ---- -->
-      <section id="viewShop" class="view">
+      <section id="viewAnnonce-boutique" class="view">
         <div class="stats-head"><h2>🛒 Annonce boutique</h2></div>
         <div class="setgrp">
           <p class="muted">Poste une annonce embed dans le salon boutique par défaut (⚙️), ou dans le salon ci-dessous si rempli.</p>
@@ -726,7 +726,7 @@
       </section>
 
       <!-- ---- Giveaways ---- -->
-      <section id="viewGiveaway" class="view">
+      <section id="viewGiveaways" class="view">
         <div class="stats-head"><h2>🎉 Giveaways</h2></div>
         <div class="setgrp">
           <p class="muted">Poste un giveaway dans un salon : les membres réagissent pour participer. Tu peux exiger un nombre de messages et/ou d'invitations depuis leur participation — le bot vérifie ça tout seul. Tirage manuel à tout moment, ou automatique à la date choisie.</p>
@@ -738,7 +738,7 @@
       </section>
 
       <!-- ---- Modération (recrutement + webhooks) ---- -->
-      <section id="viewMod" class="view">
+      <section id="viewModeration" class="view">
         <div class="stats-head"><h2>🛡️ Moderation</h2></div>
 
         <div class="setgrp" id="modRecruit">

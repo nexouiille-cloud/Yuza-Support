@@ -95,13 +95,13 @@ app.get('/api/theme', async () => effectiveTheme());
 // pour que Discord/Twitter/etc. affichent un aperçu pertinent au lieu du générique.
 const INDEX_HTML_PATH = join(__dirname, '..', 'web', 'index.html');
 const VIEW_OG = {
-  orgchart: { title: 'Organigramme — VoltHorizon', desc: "L'organigramme et la hiérarchie du staff VoltHorizon." },
+  organigramme: { title: 'Organigramme — VoltHorizon', desc: "L'organigramme et la hiérarchie du staff VoltHorizon." },
   stats: { title: 'Statistiques — VoltHorizon', desc: 'Statistiques du support VoltHorizon : tickets, temps de réponse, satisfaction.' },
-  members: { title: 'Membres du serveur — VoltHorizon', desc: 'Annuaire des membres du serveur VoltHorizon.' },
-  staff: { title: 'Équipe en ligne — VoltHorizon', desc: 'Qui est connecté sur le panel VoltHorizon en ce moment.' },
-  giveaway: { title: 'Giveaways — VoltHorizon', desc: 'Les giveaways en cours sur VoltHorizon.' },
+  membre: { title: 'Membres du serveur — VoltHorizon', desc: 'Annuaire des membres du serveur VoltHorizon.' },
+  'staff-en-ligne': { title: 'Équipe en ligne — VoltHorizon', desc: 'Qui est connecté sur le panel VoltHorizon en ce moment.' },
+  giveaways: { title: 'Giveaways — VoltHorizon', desc: 'Les giveaways en cours sur VoltHorizon.' },
   patch: { title: 'Notes de version — VoltHorizon', desc: 'Les dernières nouveautés du panel VoltHorizon.' },
-  tickets: { title: 'Tickets — VoltHorizon', desc: 'Gestion des tickets de support VoltHorizon.' },
+  ticket: { title: 'Tickets — VoltHorizon', desc: 'Gestion des tickets de support VoltHorizon.' },
 };
 const escAttr = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 app.get('/', async (req, reply) => {

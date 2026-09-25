@@ -359,7 +359,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 @keyframes viewin { from { opacity: 0; transform: translateY(14px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 /* ---------- accueil ---------- */
-#viewHome { overflow-y: auto; padding: 40px clamp(20px, 6vw, 72px); }
+#viewAccueil { overflow-y: auto; padding: 40px clamp(20px, 6vw, 72px); }
 .home-hi { font-size: 26px; margin-bottom: 4px; }
 .home-hi .accent { color: var(--accent); text-shadow: 0 0 16px var(--glow); }
 .home-sub { color: var(--text-dim); margin-bottom: 30px; }
@@ -616,7 +616,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .og-box:hover .og-resize { opacity: 1; }
 
 /* ---------- tickets : disposition ---------- */
-#viewTickets { flex-direction: row; }
+#viewTicket { flex-direction: row; }
 #sidebar { width: 300px; flex-shrink: 0; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg-2); }
 #sbHead { flex-shrink: 0; padding: 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 9px; }
 .search-wrap { position: relative; }
@@ -800,7 +800,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #attachBtn { font-size: 15px; padding: 8px 11px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 
 /* ---------- vue stats ---------- */
-#viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport, #viewConvoke, #viewBanners, #viewActivity, #viewOrgchart, #viewRankup, #viewAnnounce, #viewSanctions, #viewPanels, #viewShop, #viewGiveaway {
+#viewStats, #viewStaff-en-ligne, #viewSettings, #viewMembre, #viewSuggestion-web, #viewModeration, #viewPatch, #viewReport-bug-web, #viewConvocations, #viewBannieres, #viewJournal-activite, #viewOrganigramme, #viewRankup, #viewAnnonces, #viewSanctions-staff, #viewPanneaux, #viewAnnonce-boutique, #viewGiveaways {
   overflow-y: auto; padding: 32px clamp(20px, 6vw, 72px);
 }
 #sugText { width: 100%; max-width: 700px; background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 10px; font: inherit; resize: vertical; }
@@ -1101,7 +1101,7 @@ h2.glitch-play::after { color: #ff4d6a; clip-path: inset(60% 0 0 0); animation: 
 .conv-results { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; max-width: 700px; }
 .conv-r { font-size: 12px; padding: 6px 10px; }
 .conv-target { font-weight: 600; color: var(--accent-bright); margin: 6px 0 10px; }
-#viewConvoke textarea, #viewConvoke input[type="search"] {
+#viewConvocations textarea, #viewConvocations input[type="search"] {
   width: 100%; max-width: 700px; background: var(--surface); border: 1px solid var(--border);
   color: var(--text); padding: 9px 12px; border-radius: 10px; font: inherit; resize: vertical;
 }
@@ -1164,11 +1164,11 @@ h2.glitch-play::after { color: #ff4d6a; clip-path: inset(60% 0 0 0); animation: 
 .ga-no { color: var(--danger); }
 
 /* ---------- boutique / recrutement / hooks ---------- */
-#viewMod textarea, #viewMod .setline input[type="text"] {
+#viewModeration textarea, #viewModeration .setline input[type="text"] {
   width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
   padding: 8px 11px; border-radius: 8px; font: inherit;
 }
-#viewMod textarea { max-width: 700px; resize: vertical; }
+#viewModeration textarea { max-width: 700px; resize: vertical; }
 .rec-state { font-weight: 700; color: var(--danger); }
 .rec-state.open { color: var(--ok); }
 #hookList { columns: 340px 3; column-gap: 10px; max-width: 1200px; }
@@ -1240,22 +1240,22 @@ h2.glitch-play::after { color: #ff4d6a; clip-path: inset(60% 0 0 0); animation: 
   .navbtn.active::before { display: none; }
 
   /* vues plein écran, marges resserrées */
-  #viewHome { padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
-  #viewStats, #viewStaff, #viewSettings, #viewMembers, #viewSuggest, #viewMod, #viewPatch, #viewReport, #viewConvoke, #viewBanners, #viewActivity, #viewOrgchart, #viewRankup, #viewAnnounce, #viewSanctions, #viewPanels, #viewShop, #viewGiveaway { padding: 22px 14px; }
+  #viewAccueil { padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+  #viewStats, #viewStaff-en-ligne, #viewSettings, #viewMembre, #viewSuggestion-web, #viewModeration, #viewPatch, #viewReport-bug-web, #viewConvocations, #viewBannieres, #viewJournal-activite, #viewOrganigramme, #viewRankup, #viewAnnonces, #viewSanctions-staff, #viewPanneaux, #viewAnnonce-boutique, #viewGiveaways { padding: 22px 14px; }
   .home-hi { font-size: 22px; }
   .cards { grid-template-columns: 1fr; gap: 12px; }
   .card { min-height: 96px; padding: 16px; }
   #setBody { max-width: none; }
 
   /* tickets : liste OU conversation (master / detail) */
-  #viewTickets { flex-direction: column; position: relative; }
+  #viewTicket { flex-direction: column; position: relative; }
   #sidebar {
     width: 100%; flex: 1; height: auto;
     border-right: 0; border-bottom: 0;
   }
   #main { display: none; }
-  #viewTickets.show-convo #sidebar { display: none; }
-  #viewTickets.show-convo #main { display: flex; }
+  #viewTicket.show-convo #sidebar { display: none; }
+  #viewTicket.show-convo #main { display: flex; }
   #backToList:not(.hidden) { display: grid; }
 
   /* en-tête d'un ticket : boutons qui débordent -> on scrolle */

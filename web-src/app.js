@@ -345,8 +345,8 @@ function showView(name) {
     markNewBadgeSeen(name);
     $(`.navbtn[data-view="${name}"] .nb-new`)?.remove();
   }
-  if (name === 'home') renderHome();
-  if (name === 'staff') {
+  if (name === 'accueil') renderHome();
+  if (name === 'staff-en-ligne') {
     if (!presence.length && !teamRoster.length) $('#staffList').innerHTML = skelRows(4);
     else renderStaffView();
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_team' }));
@@ -359,11 +359,11 @@ function showView(name) {
     ws.send(JSON.stringify({ type: 'get_settings' }));
     if (settingsScope === 'owner') ws.send(JSON.stringify({ type: 'get_logins' }));
   }
-  if (name === 'members' && ws && ws.readyState === 1)
+  if (name === 'membre' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'members', q: $('#memSearch').value.trim() }));
-  if (name === 'suggest' && ws && ws.readyState === 1 && settingsScope === 'owner')
+  if (name === 'suggestion-web' && ws && ws.readyState === 1 && settingsScope === 'owner')
     ws.send(JSON.stringify({ type: 'get_suggestions' }));
-  if (name === 'mod') {
+  if (name === 'moderation') {
     $('#modRecruit').classList.toggle('hidden', !perms.recruit);
     $('#modHooks').classList.toggle('hidden', !perms.webhooks);
     if (ws && ws.readyState === 1) {
@@ -371,29 +371,29 @@ function showView(name) {
       if (perms.webhooks) ws.send(JSON.stringify({ type: 'get_hooks' }));
     }
   }
-  if (name === 'announce') {
+  if (name === 'annonces') {
     $('#annStatus').textContent = '';
   }
-  if (name === 'sanctions' && ws && ws.readyState === 1) {
+  if (name === 'sanctions-staff' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_sanctions' }));
   }
-  if (name === 'panels' && ws && ws.readyState === 1) {
+  if (name === 'panneaux' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_panels' }));
   }
-  if (name === 'giveaway' && ws && ws.readyState === 1) {
+  if (name === 'giveaways' && ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ type: 'get_giveaways' }));
   }
-  if (name === 'shop') {
+  if (name === 'annonce-boutique') {
     $('#shopStatus').textContent = '';
   }
-  if (name === 'report' && ws && ws.readyState === 1)
+  if (name === 'report-bug-web' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_reports' }));
-  if (name === 'activity') {
+  if (name === 'journal-activite') {
     if (activity.length) renderActivity();
     else $('#actList').innerHTML = skelRows(5);
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_activity' }));
   }
-  if (name === 'orgchart') {
+  if (name === 'organigramme') {
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'get_orgchart' }));
     $('#ogAddBox').classList.toggle('hidden', !perms.orgchart);
     $('#ogEditHint').classList.toggle('hidden', !perms.orgchart);
@@ -402,16 +402,16 @@ function showView(name) {
   if (name === 'rankup') {
     $('#rkStatus').textContent = '';
   }
-  if (name === 'convoke' && ws && ws.readyState === 1)
+  if (name === 'convocations' && ws && ws.readyState === 1)
     ws.send(JSON.stringify({ type: 'get_convocations' }));
-  if (name === 'banners' && perms.banners && typeof initBannerEditor === 'function') initBannerEditor();
+  if (name === 'bannieres' && perms.banners && typeof initBannerEditor === 'function') initBannerEditor();
   if (name === 'patch') loadPatchNotes();
 }
 
 /* ---------------- badge "Nouveau" sur les onglets récemment ajoutés ---------------- */
 const NEW_BADGE_UNTIL = {
-  rankup: '2026-09-26', announce: '2026-09-26', sanctions: '2026-09-26',
-  panels: '2026-09-26', shop: '2026-09-26', giveaway: '2026-10-09',
+  rankup: '2026-09-26', 'annonces': '2026-09-26', 'sanctions-staff': '2026-09-26',
+  'panneaux': '2026-09-26', 'annonce-boutique': '2026-09-26', 'giveaways': '2026-10-09',
 };
 function newBadgeSeen() {
   try { return JSON.parse(localStorage.getItem('volt_new_seen') || '[]'); } catch { return []; }
@@ -765,7 +765,7 @@ $$('#rail .navbtn[data-view]').forEach((b) =>
   b.addEventListener('click', () => { if (!railEditMode) showView(b.dataset.view); }),
 );
 
-$('#presence').addEventListener('click', () => showView('staff'));
+$('#presence').addEventListener('click', () => showView('staff-en-ligne'));
 
 /* ---------------- barre latérale réorganisable (ordre perso, par navigateur) ---------------- */
 let railEditMode = false;
@@ -950,7 +950,7 @@ $$('.card[data-go]').forEach((c) =>
       );
       filterMode = 'unassigned';
       renderSidebar();
-      showView('tickets');
+      showView('ticket');
     } else {
       showView(go);
     }
@@ -983,7 +983,7 @@ function renderHome() {
   if (myReq.length) {
     hr.textContent = `🔔 On te demande sur ${myReq.length} ticket${myReq.length > 1 ? 's' : ''} — clique pour voir`;
     hr.onclick = () => {
-      showView('tickets');
+      showView('ticket');
       openTicket(myReq[0].user_id);
     };
   }
@@ -1067,7 +1067,7 @@ function renderPresence() {
   $('#statusPresence').textContent = presence.length
     ? `${presence.length} staff en ligne`
     : '';
-  if ($('#viewStaff').classList.contains('active')) renderStaffView();
+  if ($('#viewStaff-en-ligne').classList.contains('active')) renderStaffView();
 }
 
 /* ---------------- fiche membre ---------------- */
@@ -1118,7 +1118,7 @@ function renderMemberModal(p, query) {
   if (mo)
     mo.addEventListener('click', () => {
       $('#memberModal').classList.add('hidden');
-      showView('tickets');
+      showView('ticket');
       openTicket(p.user_id);
     });
 }
@@ -1226,7 +1226,7 @@ function maybeNotify(m) {
     const n = new Notification(title, { body });
     n.onclick = () => {
       window.focus();
-      showView('tickets');
+      showView('ticket');
       openTicket(m.userId);
     };
   } catch {}
@@ -1319,7 +1319,7 @@ function handle(m) {
         const h = !hashOpened && sharedViewParam();
         hashOpened = true;
         const sec = h && document.getElementById('view' + h.charAt(0).toUpperCase() + h.slice(1));
-        showView(sec ? h : 'home');
+        showView(sec ? h : 'accueil');
       } else syncHeader();
       if (ws && ws.readyState === 1) {
         ws.send(JSON.stringify({ type: 'stats' })); // pour le classement d'accueil
@@ -1330,12 +1330,12 @@ function handle(m) {
     case 'presence':
       presence = Array.isArray(m.staff) ? m.staff : [];
       renderPresence();
-      if ($('#viewStaff').classList.contains('active')) renderStaffView();
+      if ($('#viewStaff-en-ligne').classList.contains('active')) renderStaffView();
       break;
 
     case 'team':
       teamRoster = Array.isArray(m.list) ? m.list : [];
-      if ($('#viewStaff').classList.contains('active')) renderStaffView();
+      if ($('#viewStaff-en-ligne').classList.contains('active')) renderStaffView();
       break;
 
     case 'member':
@@ -1423,7 +1423,7 @@ function handle(m) {
           });
           n.onclick = () => {
             window.focus();
-            showView('tickets');
+            showView('ticket');
             openTicket(m.userId);
           };
         }
@@ -1610,7 +1610,7 @@ function handle(m) {
           const n = new Notification(`📂 Ticket « ${m.category} »`, {
             body: `${m.by} — ${m.ticketName}`,
           });
-          n.onclick = () => { window.focus(); showView('tickets'); openTicket(m.userId); };
+          n.onclick = () => { window.focus(); showView('ticket'); openTicket(m.userId); };
         }
       } catch {}
       break;
@@ -1704,7 +1704,7 @@ function handle(m) {
     case 'stats':
       lastStats = m.stats;
       renderStats(m.stats);
-      if ($('#viewHome').classList.contains('active')) renderHomeTop();
+      if ($('#viewAccueil').classList.contains('active')) renderHomeTop();
       break;
 
     case 'dm_failed':
@@ -1715,19 +1715,19 @@ function handle(m) {
 
     case 'activity_list':
       activity = Array.isArray(m.list) ? m.list : [];
-      if ($('#viewActivity').classList.contains('active')) renderActivity();
+      if ($('#viewJournal-activite').classList.contains('active')) renderActivity();
       break;
 
     case 'orgchart':
       orgChart = Array.isArray(m.list) ? m.list : [];
-      if ($('#viewOrgchart').classList.contains('active')) renderOrgChart();
+      if ($('#viewOrganigramme').classList.contains('active')) renderOrgChart();
       break;
 
     case 'activity':
       if (m.entry) {
         activity.unshift(m.entry);
         if (activity.length > 400) activity.length = 400;
-        if ($('#viewActivity').classList.contains('active')) renderActivity();
+        if ($('#viewJournal-activite').classList.contains('active')) renderActivity();
       }
       break;
   }
@@ -1825,7 +1825,7 @@ function renderActivity() {
     b.addEventListener('click', () => {
       const uid = b.dataset.uid;
       if (tickets.has(uid)) {
-        showView('tickets');
+        showView('ticket');
         openTicket(uid);
       } else {
         setStatus('Ce ticket n\'est plus dans la liste active.');
@@ -1845,7 +1845,7 @@ $('#ogSearch').addEventListener('input', (e) => {
 });
 
 function renderOgResults(m) {
-  if (!$('#viewOrgchart').classList.contains('active')) return;
+  if (!$('#viewOrganigramme').classList.contains('active')) return;
   const box = $('#ogSearchResults');
   const q = $('#ogSearch').value.trim();
   if (!m.members || !m.members.length || !q) {
@@ -2326,7 +2326,7 @@ function renderStats(s) {
   revealOnScroll($('#statsBody'));
 }
 
-$('#statsClose').addEventListener('click', () => showView('home'));
+$('#statsClose').addEventListener('click', () => showView('accueil'));
 
 /* ---------------- recherche + filtre ---------------- */
 let searchTimer = null;
@@ -2376,7 +2376,7 @@ $('#msgs').addEventListener(
 /* ---------------- vue ticket ---------------- */
 function closeTicketView() {
   current = null;
-  $('#viewTickets').classList.remove('show-convo');
+  $('#viewTicket').classList.remove('show-convo');
   $('#msgs').innerHTML =
     '<div class="m system">Sélectionne un ticket à gauche.</div>';
   $('#input').disabled = true;
@@ -2385,7 +2385,7 @@ function closeTicketView() {
   renderSidebar();
 }
 $('#backToList').addEventListener('click', () =>
-  $('#viewTickets').classList.remove('show-convo'),
+  $('#viewTicket').classList.remove('show-convo'),
 );
 
 /* ---------------- rendu sidebar ---------------- */
@@ -2629,7 +2629,7 @@ function openTicket(uid) {
   if (t) t.unread = 0;
   $('#input').disabled = false;
   $('#sendBtn').disabled = false;
-  $('#viewTickets').classList.add('show-convo'); // mobile : bascule vers la conversation
+  $('#viewTicket').classList.add('show-convo'); // mobile : bascule vers la conversation
   syncHeader();
   renderSidebar();
   if (msgCache.has(uid)) renderMessages();
@@ -2679,7 +2679,7 @@ $('#reqRole').addEventListener('change', (e) => {
 
 // rafraîchit les minuteurs SLA
 setInterval(() => {
-  if ($('#app').classList.contains('on') && $('#viewTickets').classList.contains('active')) {
+  if ($('#app').classList.contains('on') && $('#viewTicket').classList.contains('active')) {
     renderSidebar();
   }
 }, 30000);
@@ -3056,7 +3056,7 @@ $('#convSearch').addEventListener('input', (e) => {
 });
 function renderConvResults(m) {
   // réutilise la réponse "members" quand on est sur l'onglet convocation
-  if (!$('#viewConvoke').classList.contains('active')) return;
+  if (!$('#viewConvocations').classList.contains('active')) return;
   const box = $('#convResults');
   if (!m.members || !m.members.length) { box.innerHTML = ''; return; }
   box.innerHTML = m.members
