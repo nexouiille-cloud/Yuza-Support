@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import Fastify from 'fastify';
@@ -70,6 +71,11 @@ await app.register(fastifyStatic, {
 const SECURE = config.oauthRedirectUri.startsWith('https');
 const SESSION_COOKIE = 'yuza_session';
 const STATE_COOKIE = 'yuza_oauth_state';
+const NEXT_COOKIE = 'yuza_next';
+// section visée (#hash) au moment du clic sur "Se connecter" — sinon un lien Discord vers
+// #orgchart atterrit sur l'accueil après le détour OAuth, car le hash ne survit pas la
+// redirection vers Discord puis /auth/callback (il n'est jamais envoyé au serveur).
+const NEXT_RE = /^[a-zA-Z0-9_-]{1,40}$/;
 const baseCookie = {
   path: '/',
   httpOnly: true,
@@ -82,6 +88,35 @@ app.get('/health', async () => ({ ok: true }));
 // thème / nom de l'appli (public, pour l'affichage)
 app.get('/api/theme', async () => effectiveTheme());
 
+// --- aperçu de lien dynamique selon l'onglet partagé (?v=orgchart, etc.) ---
+// Un lien Discord ne peut jamais voir un #hash (jamais envoyé au serveur), donc l'appli écrit
+// désormais l'URL partageable en ?v=... dans la barre d'adresse (voir showView côté web/app.js).
+// On sert ici le même index.html mais avec les balises og:/twitter: adaptées à cette section,
+// pour que Discord/Twitter/etc. affichent un aperçu pertinent au lieu du générique.
+const INDEX_HTML_PATH = join(__dirname, '..', 'web', 'index.html');
+const VIEW_OG = {
+  orgchart: { title: 'Organigramme — VoltHorizon', desc: "L'organigramme et la hiérarchie du staff VoltHorizon." },
+  stats: { title: 'Statistiques — VoltHorizon', desc: 'Statistiques du support VoltHorizon : tickets, temps de réponse, satisfaction.' },
+  members: { title: 'Membres du serveur — VoltHorizon', desc: 'Annuaire des membres du serveur VoltHorizon.' },
+  staff: { title: 'Équipe en ligne — VoltHorizon', desc: 'Qui est connecté sur le panel VoltHorizon en ce moment.' },
+  giveaway: { title: 'Giveaways — VoltHorizon', desc: 'Les giveaways en cours sur VoltHorizon.' },
+  patch: { title: 'Notes de version — VoltHorizon', desc: 'Les dernières nouveautés du panel VoltHorizon.' },
+  tickets: { title: 'Tickets — VoltHorizon', desc: 'Gestion des tickets de support VoltHorizon.' },
+};
+const escAttr = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+app.get('/', async (req, reply) => {
+  const og = VIEW_OG[String(req.query?.v || '').trim()];
+  reply.type('text/html');
+  if (!og) return readFileSync(INDEX_HTML_PATH, 'utf8');
+  return readFileSync(INDEX_HTML_PATH, 'utf8')
+    .replace(/<title>[^<]*<\/title>/, `<title>${escAttr(og.title)}</title>`)
+    .replace(/(<meta property="og:title" content=")[^"]*(" \/>)/, `$1${escAttr(og.title)}$2`)
+    .replace(/(<meta property="og:description" content=")[^"]*(" \/>)/, `$1${escAttr(og.desc)}$2`)
+    .replace(/(<meta name="twitter:title" content=")[^"]*(" \/>)/, `$1${escAttr(og.title)}$2`)
+    .replace(/(<meta name="twitter:description" content=")[^"]*(" \/>)/, `$1${escAttr(og.desc)}$2`)
+    .replace(/(<meta property="og:url" content=")[^"]*(" \/>)/, `$1https://panel.volthorizon.fr/?v=${req.query.v}$2`);
+});
+
 // le front interroge ça au chargement pour savoir s'il est connecté
 app.get('/api/me', async (req, reply) => {
   const s = verifySession(req.cookies?.[SESSION_COOKIE]);
@@ -92,6 +127,8 @@ app.get('/api/me', async (req, reply) => {
 app.get('/auth/login', async (req, reply) => {
   const state = crypto.randomBytes(16).toString('hex');
   reply.setCookie(STATE_COOKIE, state, { ...baseCookie, maxAge: 600 });
+  const next = String(req.query?.next || '');
+  if (NEXT_RE.test(next)) reply.setCookie(NEXT_COOKIE, next, { ...baseCookie, maxAge: 600 });
   return reply.redirect(oauthLoginUrl(state));
 });
 
@@ -104,6 +141,9 @@ app.get('/auth/callback', async (req, reply) => {
   const { code, state } = req.query || {};
   const expected = req.cookies?.[STATE_COOKIE];
   reply.clearCookie(STATE_COOKIE, { path: '/' });
+  const next = req.cookies?.[NEXT_COOKIE];
+  reply.clearCookie(NEXT_COOKIE, { path: '/' });
+  const dest = next && NEXT_RE.test(next) ? `/?v=${next}` : '/';
 
   if (!code) return reply.redirect('/?error=no_code');
   if (!state || !expected || state !== expected) {
@@ -119,7 +159,7 @@ app.get('/auth/callback', async (req, reply) => {
       ...baseCookie,
       maxAge: config.sessionMaxAgeMs / 1000,
     });
-    return reply.redirect('/');
+    return reply.redirect(dest);
   } catch (err) {
     console.error('[auth] erreur callback:', err);
     return reply.redirect('/?error=server_error');

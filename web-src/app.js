@@ -2,6 +2,21 @@ let ws = null;
 let current = null;
 let hashOpened = false; // pour n'ouvrir la section indiquée dans le lien (#moderation…) qu'une fois, au 1er hello
 
+// section visée par le lien ouvert : ?v=... (nouveaux liens, partageables/aperçu Discord) ou
+// #... (anciens liens déjà partagés, gardés en compatibilité — jamais transmis au serveur).
+function sharedViewParam() {
+  return new URLSearchParams(location.search).get('v') || location.hash.slice(1) || '';
+}
+
+// un lien cliqué sans être connecté doit atterrir sur cette section après le détour OAuth
+// (rien ne survit la redirection vers Discord) — transmis au serveur via ?next=, qui nous le
+// renvoie en query après /auth/callback (voir server/index.js).
+(() => {
+  const v = sharedViewParam();
+  const btn = document.getElementById('loginBtn');
+  if (v && btn) btn.href = '/auth/login?next=' + encodeURIComponent(v);
+})();
+
 const tickets = new Map(); // userId -> ticket
 const msgCache = new Map(); // userId -> [messages]
 
@@ -316,8 +331,10 @@ function playIntro() {
 
 function showView(name) {
   const id = 'view' + name.charAt(0).toUpperCase() + name.slice(1);
-  if (location.hash.slice(1) !== name) {
-    history.replaceState(null, '', '#' + name); // lien copiable qui rouvre cette section
+  if (new URLSearchParams(location.search).get('v') !== name) {
+    // ?v=... (pas #...) : un #hash n'est jamais envoyé au serveur, donc un lien Discord ne
+    // pourrait jamais avoir un aperçu différent selon la section — voir server/index.js.
+    history.replaceState(null, '', '/?v=' + name);
   }
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   playTitleGlitch(document.querySelector(`#${id} h2`));
@@ -745,10 +762,61 @@ function renderStaffView() {
 }
 
 $$('#rail .navbtn[data-view]').forEach((b) =>
-  b.addEventListener('click', () => showView(b.dataset.view)),
+  b.addEventListener('click', () => { if (!railEditMode) showView(b.dataset.view); }),
 );
 
 $('#presence').addEventListener('click', () => showView('staff'));
+
+/* ---------------- barre latérale réorganisable (ordre perso, par navigateur) ---------------- */
+let railEditMode = false;
+function loadRailOrder() {
+  try { return JSON.parse(localStorage.getItem('volt_rail_order') || 'null'); } catch { return null; }
+}
+function saveRailOrder(order) {
+  try { localStorage.setItem('volt_rail_order', JSON.stringify(order)); } catch {}
+}
+function applyRailOrder() {
+  const rail = $('#rail');
+  const order = loadRailOrder();
+  if (!order || !order.length) return;
+  const btns = Array.from(rail.querySelectorAll('.navbtn[data-view]'));
+  const byView = new Map(btns.map((b) => [b.dataset.view, b]));
+  const spacer = rail.querySelector('.spacer');
+  order.forEach((view) => { const b = byView.get(view); if (b) rail.insertBefore(b, spacer); });
+  // tout onglet connu mais absent de l'ordre sauvegardé (ajouté depuis) reste avant le spacer, à la fin
+  btns.forEach((b) => { if (!order.includes(b.dataset.view)) rail.insertBefore(b, spacer); });
+}
+applyRailOrder();
+$('#railEditBtn')?.addEventListener('click', () => {
+  railEditMode = !railEditMode;
+  $('#rail').classList.toggle('rail-editing', railEditMode);
+  $('#railEditBtn').classList.toggle('active', railEditMode);
+  Array.from($('#rail').querySelectorAll('.navbtn[data-view]')).forEach((b) => b.setAttribute('draggable', railEditMode ? 'true' : 'false'));
+});
+Array.from(document.querySelectorAll('#rail .navbtn[data-view]')).forEach((b) => {
+  b.addEventListener('dragstart', (e) => {
+    if (!railEditMode) return e.preventDefault();
+    e.dataTransfer.effectAllowed = 'move';
+    b.classList.add('nav-dragging');
+  });
+  b.addEventListener('dragend', () => b.classList.remove('nav-dragging'));
+  b.addEventListener('dragover', (e) => {
+    if (!railEditMode) return;
+    e.preventDefault();
+    const rail = $('#rail');
+    const dragging = rail.querySelector('.nav-dragging');
+    if (!dragging || dragging === b) return;
+    const btns = Array.from(rail.querySelectorAll('.navbtn[data-view]'));
+    const from = btns.indexOf(dragging);
+    const to = btns.indexOf(b);
+    if (from < to) b.after(dragging); else b.before(dragging);
+  });
+  b.addEventListener('drop', (e) => e.preventDefault());
+});
+$('#rail').addEventListener('dragend', () => {
+  const order = Array.from($('#rail').querySelectorAll('.navbtn[data-view]')).map((b) => b.dataset.view);
+  saveRailOrder(order);
+});
 
 /* ---------------- cartes d'accueil réorganisables (par staff, perso) ---------------- */
 let cardsEditMode = false;
@@ -1248,7 +1316,7 @@ function handle(m) {
       renderSidebar();
       renderHome();
       if (!current) {
-        const h = !hashOpened && location.hash.slice(1);
+        const h = !hashOpened && sharedViewParam();
         hashOpened = true;
         const sec = h && document.getElementById('view' + h.charAt(0).toUpperCase() + h.slice(1));
         showView(sec ? h : 'home');
