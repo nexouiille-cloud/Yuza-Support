@@ -78,23 +78,28 @@ body::after {
 @keyframes twinkle { 0% { opacity: 0.45; } 100% { opacity: 1; } }
 .shooting-star {
   position: absolute; top: 0; left: 0; width: 3px; height: 3px; border-radius: 50%;
-  background: #fff; box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.9); opacity: 0;
-  animation: shoot linear infinite;
+  background: #fff; box-shadow: 0 0 10px 2px rgba(255, 255, 255, 0.9), 0 0 20px 5px rgba(255, 255, 255, 0.3);
+  opacity: 0;
+  animation: shoot ease-out infinite;
 }
 .shooting-star::before {
-  content: ""; position: absolute; top: 50%; left: 50%; width: 90px; height: 1.5px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.85), transparent);
-  transform: translate(-100%, -50%) rotate(31deg); transform-origin: right center;
+  content: ""; position: absolute; top: 50%; left: 50%; width: 150px; height: 2px;
+  background: linear-gradient(90deg,
+    #fff 0%, rgba(255, 255, 255, 0.7) 20%,
+    rgba(255, 255, 255, 0.25) 50%, transparent 85%);
+  transform: translate(-100%, -50%) rotate(135deg); transform-origin: right center;
+  filter: blur(1.2px);
 }
-.shooting-star.s1 { top: 8%; left: 78%; animation-duration: 8.5s; animation-delay: 1s; }
-.shooting-star.s2 { top: 18%; left: 38%; animation-duration: 12s; animation-delay: 4.5s; }
-.shooting-star.s3 { top: 4%; left: 58%; animation-duration: 15.5s; animation-delay: 8s; }
-.shooting-star.s4 { top: 28%; left: 92%; animation-duration: 10.5s; animation-delay: 0.2s; }
+.shooting-star.s1 { top: 6%; left: 75%; animation-duration: 13s; animation-delay: 1.5s; }
+.shooting-star.s2 { top: 15%; left: 48%; animation-duration: 16s; animation-delay: 6s; }
+.shooting-star.s3 { top: 3%; left: 62%; animation-duration: 19s; animation-delay: 10.5s; }
+.shooting-star.s4 { top: 24%; left: 88%; animation-duration: 14.5s; animation-delay: 3s; }
 @keyframes shoot {
   0% { transform: translate(0, 0); opacity: 0; }
-  1.5% { opacity: 1; }
-  7% { transform: translate(-360px, 220px); opacity: 0; }
-  100% { transform: translate(-360px, 220px); opacity: 0; }
+  2% { opacity: 1; }
+  22% { transform: translate(-640px, 640px); opacity: 1; }
+  28% { transform: translate(-780px, 780px); opacity: 0; }
+  100% { transform: translate(-780px, 780px); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .stars-sm { animation: none; opacity: 0.7; }
