@@ -47,6 +47,14 @@ const app = Fastify({ logger: false });
 app.addHook('onSend', (req, reply, payload, done) => {
   reply.header('X-Author', SIGNATURE);
   reply.header('X-Powered-By', `Volt Support (by ${SIGNATURE})`);
+  // en-têtes de durcissement : empêche le MIME-sniffing et l'intégration du site
+  // dans une iframe cachée sur un autre site (clickjacking).
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('X-Frame-Options', 'DENY');
+  reply.header('Referrer-Policy', 'same-origin');
+  // frame-ancestors ne fonctionne QUE via en-tête HTTP (ignoré dans la balise <meta> de
+  // index.html) — c'est la vraie protection anti-clickjacking pour les navigateurs récents.
+  reply.header('Content-Security-Policy', "frame-ancestors 'none';");
   done(null, payload);
 });
 
